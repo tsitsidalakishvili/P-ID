@@ -32,8 +32,8 @@ st.set_page_config(layout="wide")
 import torch
 
 # Load your pre-trained model
-model_path = r'C:\Users\Tsitsi\Desktop\experiments\Demo\yolov5\runs\train\exp3\weights\best.pt'
-hubconf_path = r'C:\Users\Tsitsi\Desktop\experiments\Demo\yolov5'
+model_path = r'yolov5\runs\train\exp3\weights\best.pt'
+hubconf_path = r'yolov5'
 model = torch.hub.load(hubconf_path, 'custom', path=model_path, source='local')
 
 # Function to run inference and return results
@@ -60,15 +60,19 @@ def run_inference_and_get_results(confidence_threshold, img, nms_threshold=0.1):
             "bbox": [xmin, ymin, xmax, ymax]
         })
 
-    # Convert boxes and scores to tensors and ensure they are float32
-    boxes_tensor = torch.tensor(boxes, dtype=torch.float32)
+
+
+    # Ensure boxes is a 2D tensor with shape [num_boxes, 4]
+    boxes_tensor = torch.tensor(boxes, dtype=torch.float32).reshape(-1, 4)
     scores_tensor = torch.tensor(scores, dtype=torch.float32)
 
     # Debug: Print boxes before NMS
-    print(f"Boxes before NMS: {boxes}")
+    print(f"Boxes before NMS: {boxes_tensor.size()}")
 
     # Apply Non-Maximum Suppression
     keep_indices = nms(boxes_tensor, scores_tensor, nms_threshold)
+    
+
     
     # Filter the detected_objects based on the keep_indices from NMS
     detected_objects_nms = [detected_objects[i] for i in keep_indices]
@@ -143,7 +147,7 @@ def enhance_images(images, resize_factor, denoise_strength, denoise_template_win
     return enhanced_images
 
 # Function to save enhanced images to a specified directory
-def save_enhanced_images(images, directory=r"C:\Users\Tsitsi\Desktop\experiments\Demo\yolo\enhanced_images"):
+def save_enhanced_images(images, directory=r"C:\Users\Tsitsi\Desktop\experiments\P-ID\yolo\enhanced_images"):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
