@@ -1,35 +1,22 @@
-import streamlit as st
 import os
-from PIL import Image
+import re  # Import the regular expression library
+import tempfile
+
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw
-import torch
-from torchvision import transforms
-from PIL import Image, ImageOps, ImageEnhance
-from rapidocr_onnxruntime import RapidOCR
-import tempfile
 import pandas as pd
-import re  # Import the regular expression library
 import torch
-import torch
-from PIL import Image
-import ipywidgets as widgets
-from IPython.display import display
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps
+from rapidocr_onnxruntime import RapidOCR
+from torchvision import transforms
 from torchvision.ops import nms
 
 import streamlit as st
-import pandas as pd
-import re
-import streamlit as st
-import pandas as pd
-import re
+
 
 
 st.set_page_config(layout="wide")
 
-# Load your pre-trained model
-import torch
 
 # Load your pre-trained model
 model_path = r'yolov5\runs\train\exp3\weights\best.pt'
