@@ -134,7 +134,7 @@ def enhance_images(images, resize_factor, denoise_strength, denoise_template_win
     return enhanced_images
 
 # Function to save enhanced images to a specified directory
-def save_enhanced_images(images, directory=r"C:\Users\Tsitsi\Desktop\experiments\P-ID\yolo\enhanced_images"):
+def save_enhanced_images(images, directory=r"P-ID\yolo\enhanced_images"):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
