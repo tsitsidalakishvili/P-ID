@@ -1,8 +1,0 @@
-streamlit
-Pillow==8.3.1
-opencv-python
-#numpy==1.21.2
-torch
-torchvision
-rapidocr-onnxruntime
-pandas
