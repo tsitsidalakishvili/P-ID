@@ -7,3 +7,4 @@ pandas
 
 rapidocr_onnxruntime
 opencv-python-headless<4.3
+opencv-python
