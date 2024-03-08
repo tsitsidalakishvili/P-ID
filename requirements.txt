@@ -4,9 +4,5 @@ numpy
 torch
 torchvision
 pandas
-opencv-python
 rapidocr_onnxruntime
-
-
-#opencv-python-headless<4.3
-opencv-python
+opencv-python-headless<4.3
