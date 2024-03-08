@@ -1,0 +1,22 @@
+<annotation>
+    <folder>P&amp;IDs</folder>
+    <filename>Round-offset XX-nnn 19.png</filename>
+    <size>
+        <width>347</width>
+        <height>140</height>
+        <depth>3</depth>
+    </size>
+    <object>
+        <name>Instrument-offset</name>
+        <pose>Unspecified</pose>
+        <truncated>0</truncated>
+        <occluded>0</occluded>
+        <difficult>0</difficult>
+        <bndbox>
+            <xmin>156.550430</xmin>
+            <ymin>48.657139</ymin>
+            <xmax>213.386154</xmax>
+            <ymax>84.399994</ymax>
+        </bndbox>
+    </object>
+</annotation>
