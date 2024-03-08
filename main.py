@@ -23,7 +23,6 @@ st.set_page_config(layout="wide")
 
 
 # Base directory for your project, relative to the current script file
-base_dir = os.path.dirname(__file__)  # Dynamically get the script directory
 # base_dir = '.'  # Alternatively, you can use '.' for the current directory
 
 # Relative path to your YOLOv5 directory from the base directory
