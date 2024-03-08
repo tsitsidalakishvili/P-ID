@@ -5,4 +5,8 @@ torch
 torchvision
 pandas
 rapidocr_onnxruntime
-opencv-python-headless<4.3
+
+
+pyecharts>=1.9.0
+opencv-python-headless
+opencv-python
