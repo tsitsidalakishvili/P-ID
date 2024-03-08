@@ -21,8 +21,10 @@ import numpy as np
 st.set_page_config(layout="wide")
 
 
-# Base directory for your project
-base_dir = 'C:\\Users\\Tsitsi\\Desktop\\experiments\\P-ID'   
+
+# Base directory for your project, relative to the current script file
+base_dir = os.path.dirname(__file__)  # Dynamically get the script directory
+# base_dir = '.'  # Alternatively, you can use '.' for the current directory
 
 # Relative path to your YOLOv5 directory from the base directory
 yolov5_rel_path = 'yolov5'
@@ -31,15 +33,13 @@ yolov5_rel_path = 'yolov5'
 yolov5_dir = os.path.join(base_dir, yolov5_rel_path)
 
 # Relative path to your trained model from the base directory
-model_rel_path = 'yolov5\\runs\\train\\exp2\\weights\\best.pt'
+model_rel_path = os.path.join('yolov5', 'runs', 'train', 'exp2', 'weights', 'best.pt')
 
 # Full path to the trained model
 model_path = os.path.join(base_dir, model_rel_path)
 
 # Load the trained model with force_reload
 model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
-
-
 
 
 # Define your class color mapping here
