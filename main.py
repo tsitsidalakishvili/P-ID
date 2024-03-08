@@ -1,5 +1,4 @@
 import streamlit as st
-import openai
 import os
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 import requests
