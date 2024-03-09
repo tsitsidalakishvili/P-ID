@@ -1,0 +1,40 @@
+
+
+# Define a session state to track the chatbot's visibility across pages
+if 'chatbot_visible' not in st.session_state:
+    st.session_state['chatbot_visible'] = False
+
+# Function to toggle the chatbot's visibility
+def toggle_chatbot():
+    st.session_state.chatbot_visible = not st.session_state.chatbot_visible
+
+# Button to toggle the chatbot
+if st.button('Ask EigenBot'):
+    toggle_chatbot()
+
+# Display the chatbot if it's visible
+if st.session_state.chatbot_visible:
+    st.title("Chatbot")
+    user_input = st.text_area("You:", value="Hi, can you answer some questions?")
+
+    if user_input:
+        # Define the chat conversation
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": user_input},
+        ]
+
+        # Send the conversation to the chatbot model
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # Replace with your GPT model
+            messages=conversation,
+        )
+
+        # Extract and display bot response
+        bot_response = response['choices'][0]['message']['content']
+
+        # Display the chatbot's response
+        st.text("Chatbot: " + bot_response)
+
+
+
