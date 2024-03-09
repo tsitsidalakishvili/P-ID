@@ -26,7 +26,7 @@ st.set_page_config(layout="wide")
 base_dir = 'P-ID'  # Alternatively, you can use '.' for the current directory
 
 # Relative path to your YOLOv5 directory from the base directory
-yolov5_rel_path = 'yolov51'
+yolov5_rel_path = 'yolov5'
 
 # Full path to the YOLOv5 directory
 yolov5_dir = os.path.join(base_dir, yolov5_rel_path)
