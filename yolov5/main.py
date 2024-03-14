@@ -1,7 +1,6 @@
 import streamlit as st
-import openai
 import os
-from PIL import Image, ImageDraw, ImageEnhance, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageFont
 import requests
 from io import BytesIO
 import tempfile
@@ -13,30 +12,56 @@ from torchvision import transforms
 from torchvision.ops import nms
 import re  # Import the regular expression library
 import numpy as np
-import imageio
+import altair
+#from ironpdf import PdfDocument
+import fitz
+import io
 from streamlit_elements import mui
+import requests
 from PIL import ImageFont
+
+from io import BytesIO
+import tempfile
+from rapidocr_onnxruntime import RapidOCR
+import pandas as pd
+import cv2
+import torch
+from PIL import Image
+from torchvision import transforms
+from torchvision.ops import nms
+import os
+import re  # Import the regular expression library
+import tempfile
+import numpy as np
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps
+from rapidocr_onnxruntime import RapidOCR
+from torchvision import transforms
+import pandas as pd
+import streamlit as st
+Image.MAX_IMAGE_PIXELS = None  # Removes the limit entirely
 
 st.set_page_config(layout="wide")
 
-
-# Base directory for your project
-base_dir = 'C:\\Users\\Tsitsi\\Desktop\\experiments\\P-ID'   
+base_dir = os.path.dirname(__file__)  # Dynamically get the script directory
 
 # Relative path to your YOLOv5 directory from the base directory
-yolov5_rel_path = 'yolov5'
+yolov5_rel_path = ''
 
 # Full path to the YOLOv5 directory
 yolov5_dir = os.path.join(base_dir, yolov5_rel_path)
 
 # Relative path to your trained model from the base directory
-model_rel_path = 'yolov5\\runs\\train\\exp2\\weights\\best.pt'
+model_rel_path = os.path.join('runs', 'train', 'exp', 'weights', 'best.pt')
 
 # Full path to the trained model
 model_path = os.path.join(base_dir, model_rel_path)
 
+# Convert model_path to string - This is the necessary change
+model_path_str = str(model_path)  # Convert WindowsPath or PosixPath to string
+
 # Load the trained model with force_reload
-model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
+model = torch.hub.load(yolov5_dir, 'custom', path=model_path_str, source='local', force_reload=True)
+
 
 
 
@@ -130,32 +155,24 @@ def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold
 
 def draw_boxes_with_class_colors(image, detections):
     draw = ImageDraw.Draw(image)
-
-    # Specify a larger font size
-    font_size = 20
-    try:
-        # Use a common font available on most systems
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except IOError:
-        # Default font if specific font is not available
-        font = ImageFont.load_default()
+    font = ImageFont.load_default()  # Load a default font
 
     for detection in detections:
         class_name = detection['class']
-        bbox = detection['bbox']
+        confidence = detection['confidence']
+        xmin, ymin, xmax, ymax = detection['bbox']
 
-        # Check if the class name is in the CLASS_COLORS dictionary
-        if class_name in CLASS_COLORS:
-            color = CLASS_COLORS[class_name]
-        else:
-            # Default color if class name not found
-            color = (255, 255, 255)
+        # Determine color based on class_name
+        color = CLASS_COLORS.get(class_name, (255, 255, 255))
 
-        draw.rectangle(bbox, outline=color, width=2)
-        draw.text((bbox[0], bbox[1]), f"{class_name} ({detection['confidence']:.2f})", fill=color, font=font)
+        # Draw rectangle
+        draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=2)
+
+        # Draw text
+        text = f"{class_name} {confidence:.2f}"
+        draw.text((xmin, ymin), text, fill=color, font=font)
 
     return image
-
 
 def crop_detected_areas(image, detections, margin=10):
     cropped_images = []
@@ -171,9 +188,8 @@ def crop_detected_areas(image, detections, margin=10):
         cropped_images.append(cropped_image)
     return cropped_images
 
+def enhance_images(images, resize_factor, denoise_strength, denoise_template_window_size, denoise_search_window, thresholding, deskew_angle):
 
-def enhance_images(images, resize_factor, denoise_strength, denoise_template_window_size, denoise_search_window,
-                   thresholding, deskew_angle):
     enhanced_images = []
     for image in images:
         # Resize the image
@@ -235,7 +251,7 @@ def save_enhanced_images(images, directory=r"P-ID\yolo\enhanced_images"):
 def save_cropped_images_with_classes(cropped_images, detected_objects, directory=r"P-ID\yolo\cropped_images"):
     if not os.path.exists(directory):
         os.makedirs(directory)
-    
+
     saved_image_paths = []
     for idx, (image, detected_object) in enumerate(zip(cropped_images, detected_objects)):
         class_name = detected_object['class']  # Extract class name from detection
@@ -244,7 +260,7 @@ def save_cropped_images_with_classes(cropped_images, detected_objects, directory
         file_path = os.path.join(directory, file_name)
         image.save(file_path)
         saved_image_paths.append(file_path)
-    
+
     return saved_image_paths
 
 # Function to perform OCR and extract text from an image file path
@@ -314,7 +330,7 @@ def generate_regex_pattern_from_parts(system, function, sequence):
     system_regex = rf"({system})?" if system else ""
     function_regex = rf"{function}" if function else ""
     sequence_regex = rf"(\d{{4}}[A-Z]{{0,2}})" if sequence else ""
-    
+
     # Combine parts into a comprehensive regex pattern allowing system number at the start or end
     full_regex = f"({system_regex}-{function_regex}-{sequence_regex}|{function_regex}-{sequence_regex}-{system_regex})"
     return rf"\b{full_regex}\b"
@@ -329,88 +345,260 @@ def format_instrument_number(number):
     return number  # Return original number if it doesn't match the expected pattern
 
 
-# Sidebar for navigation
+
+def render_pdf_page_to_png(file, dpi=400):
+    """
+    Render each page of a PDF as a whole image in PNG format.
+
+    Args:
+    - file: The uploaded PDF file.
+    - dpi: The dots per inch (resolution) of the rendered image.
+
+    Returns:
+    A list of PIL images in PNG format, each representing a page of the PDF.
+    """
+    images = []
+    doc = fitz.open(stream=file.read())  # Open the PDF file
+    for page_num in range(len(doc)):  # Iterate through each page
+        page = doc.load_page(page_num)  # Load the current page
+        pix = page.get_pixmap(dpi=dpi)  # Render the page to a pixmap at the specified DPI
+
+        img_bytes = io.BytesIO(pix.tobytes("png"))  # Convert pixmap to PNG bytes and then to BytesIO
+
+        image = Image.open(img_bytes)  # Read the image from the BytesIO buffer
+        images.append(image)
+    return images
+
+
+
+
+def render_pdf_page_to_jpg_with_poppler(file, dpi=1200):
+    """
+    Render each page of a PDF as a whole image in JPG format using Poppler through pdf2image.
+
+    Args:
+    - file: The uploaded PDF file, as a file-like object.
+    - dpi: The dots per inch (resolution) of the rendered image.
+
+    Returns:
+    A list of PIL images in JPG format, each representing a page of the PDF.
+    """
+    images = []
+
+    # Convert PDF file to images using pdf2image
+    pil_images = convert_from_bytes(file.read(), dpi=dpi)
+
+    # Convert each PIL image to JPG and append to the images list
+    for img in pil_images:
+        jpg_bytes = io.BytesIO()
+        img.save(jpg_bytes, format="JPEG")
+        jpg_bytes.seek(0)
+        jpg_image = Image.open(jpg_bytes)
+        images.append(jpg_image)
+
+    return images
+
+
+
+def render_pdf_page_to_jpg(file, dpi=1200):
+    """
+    Render each page of a PDF as a whole image in JPG format.
+
+    Args:
+    - file: The uploaded PDF file.
+    - dpi: The dots per inch (resolution) of the rendered image.
+
+    Returns:
+    A list of PIL images in JPG format, each representing a page of the PDF.
+    """
+    images = []
+    doc = fitz.open(stream=file.read())  # Open the PDF file
+    for page_num in range(len(doc)):  # Iterate through each page
+        page = doc.load_page(page_num)  # Load the current page
+        pix = page.get_pixmap(dpi=dpi)  # Render the page to a pixmap at the specified DPI
+
+        img_bytes = io.BytesIO(pix.tobytes("png"))  # Convert pixmap to PNG bytes and then to BytesIO
+        img = Image.open(img_bytes)  # Create a PIL Image from the PNG data
+        jpg_bytes = io.BytesIO()  # Create a new BytesIO object for the JPG data
+        img.save(jpg_bytes, format="JPEG")  # Save the PIL Image as JPEG to the new BytesIO object
+        jpg_bytes.seek(0)  # Rewind the BytesIO object for reading
+
+        jpg_image = Image.open(jpg_bytes)  # Create a new PIL Image from the JPG data
+        images.append(jpg_image)
+    return images
+
+
+def render_pdf_page_to_png_with_mupdf(file_stream, dpi=800):
+    """
+    Render each page of a PDF as a whole image in PNG format using MuPDF.
+
+    Args:
+    - file_stream: The byte stream of the uploaded PDF file.
+    - dpi: The resolution of the rendered image in dots per inch (DPI).
+
+    Returns:
+    A list of PIL Image objects, each representing a page of the PDF rendered as a PNG image.
+    """
+    images = []
+
+    # Ensure the stream position is at the beginning
+    file_stream.seek(0)
+
+    # Open the PDF file from the stream
+    doc = fitz.open("pdf", file_stream.read())
+
+    for page_num in range(len(doc)):  # Iterate through each page
+        page = doc.load_page(page_num)  # Load the current page
+        mat = fitz.Matrix(dpi / 72, dpi / 72)  # A matrix for scaling images according to the specified DPI
+        pix = page.get_pixmap(matrix=mat, alpha=False)  # Render the page to a pixmap
+
+        # Directly convert pixmap to PNG bytes
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes))  # Create a PIL Image from the PNG bytes
+
+        # Ensure the image is in RGBA format to match the bit depth of training images
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+
+        images.append(img)
+    return images
+
+
+
+
+
+def draw_boxes_with_class_colors(image, detections, line_width=3):
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()  # Use a default font
+
+    for detection in detections:
+        class_name = detection['class']
+        confidence = detection['confidence']
+        xmin, ymin, xmax, ymax = detection['bbox']
+
+        # Determine color based on class_name
+        color = CLASS_COLORS.get(class_name, (255, 255, 255))
+
+        # Draw rectangle with increased line width
+        draw.rectangle([xmin, ymin, xmax, ymax], outline=color, width=line_width)
+
+        # Draw text
+        text = f"{class_name} {confidence:.2f}"
+        draw.text((xmin, ymin), text, fill=color, font=font)
+
+    return image
+
+
+
+
+
+
+def render_pdf_to_images(uploaded_file):
+    """
+    Render each page of a PDF to images using PyMuPDF (fitz).
+
+    Args:
+    - uploaded_file: The uploaded PDF file as a BytesIO object.
+
+    Returns:
+    - List of PIL Image objects, one per page.
+    """
+    images = []
+    # Open the PDF file from the uploaded BytesIO object
+    doc = fitz.open(stream=uploaded_file.read())
+    for page in doc:
+        pix = page.get_pixmap()
+        img_data = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_data))
+        images.append(img)
+    return images
+
+
+
 page = st.sidebar.selectbox("Select a page", ("Object Detection", "OCR"))
 
+
+# Assuming render_pdf_to_images is defined elsewhere in your code
+
 if page == "Object Detection":
-    st.sidebar.write("""
+    st.write("""
     ## Object Detection 🔍
     Use the Object Detection feature to automatically identify and label different instruments and components in your P&ID diagrams. Adjust detection settings as needed.
-    - **Detect Object:** Start object detection on your uploaded image.
+    - **Detect Object:** Start object detection on your uploaded image or PDF.
     - **Enhancement:** Enhance detected objects for better analysis.
     """)
 
-    st.subheader("Object Detection using YOLOv5")
+    # Define a tab option for different functionalities
+    tab_option = st.radio("Select Option", ["Detect Object", "Image Enhancement Tool"], horizontal=True)
 
-    # Create radio tabs for "Detect Object" and "Enhancement Parameters"
-    tab_option = st.radio("Select Option", ["Detect Object", "Improve Image Quality"], horizontal=True)
-
-  
-    # Main code
     if tab_option == "Detect Object":
         confidence_threshold = st.slider("Confidence Threshold", min_value=0.0, max_value=1.0, value=0.3, step=0.05)
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
-        
+        uploaded_file = st.file_uploader("Choose an image or PDF...", type=["jpg", "png", "jpeg", "pdf"])
+
         if uploaded_file is not None:
-            st.session_state['uploaded_image_name'] = uploaded_file.name
-            image = Image.open(uploaded_file).convert('RGB')
-            st.image(image, caption='Uploaded Image', use_column_width=True)
-            st.markdown(f"Uploaded File Name: `{st.session_state['uploaded_image_name']}`")
+            # Store the uploaded file in session state for access in other tabs
+            st.session_state['uploaded_file'] = uploaded_file
 
-            if st.button('Detect Objects'):
-                detections = run_inference_and_get_results(confidence_threshold, image)
-                st.session_state['detected_objects'] = detections
+            images = []  # Initialize an empty list for storing images from either an uploaded image or PDF
 
-                if detections:
-                    st.success(f"Detected Objects: {len(detections)}")
-                    image_with_boxes = draw_boxes_with_class_colors(image.copy(), detections)
-                    st.image(image_with_boxes, caption='Detected Objects', use_column_width=True)
+            if uploaded_file.type == "application/pdf":
+                with st.spinner("Processing PDF..."):
+                    images = render_pdf_page_to_png_with_mupdf(uploaded_file)
+                    for image in images:
+                        st.image(image, caption="Image from PDF", use_column_width=True)
+            else:
+                image = Image.open(uploaded_file).convert('RGB')
+                images.append(image)  # Add the single image to the list
+                st.image(image, caption='Uploaded Image', use_column_width=True)
 
-                    st.markdown("### Class Colors")
-                    legend_html = ""
-                    for class_name, color in CLASS_COLORS.items():
-                        color_hex = '#{:02x}{:02x}{:02x}'.format(*color)
-                        legend_html += f"<span style='color: {color_hex};'>{class_name}</span><br>"
-                    st.markdown(legend_html, unsafe_allow_html=True)
+            # Store images in session state for access in other tabs
+            st.session_state['images'] = images
 
-                    cropped_images_with_classes = crop_detected_areas(image, detections)
-                    st.session_state['cropped_images_with_classes'] = cropped_images_with_classes
-                else:
-                    st.info("No objects detected.")
+            if images:  # This will check if the images list is not empty
+                if st.button('Detect Objects'):
+                    for image in images:
+                        # Run model inference to get detections for each image
+                        detections = run_inference_and_get_results(confidence_threshold, image)
+                        if detections:
+                            image_with_boxes = draw_boxes_with_class_colors(image.copy(), detections)
+                            st.image(image_with_boxes, caption='Detected Objects', use_column_width=True)
 
-                # Crop detected areas and store in session state
-                st.session_state['cropped_images'] = crop_detected_areas(image, detections)
-    
-        
-    if tab_option == "Improve Image Quality":
-        # Check if there are cropped images to display
-        if 'cropped_images' in st.session_state and st.session_state['cropped_images']:
-            st.success("Detected objects:")
-            # Create a multi-column layout to display cropped images
-            cols = st.columns(len(st.session_state['cropped_images']))  # Adjust column count as needed
-            for idx, col in enumerate(cols):
-                with col:
-                    st.image(st.session_state['cropped_images'][idx], caption=f'Detected Object {idx + 1}', width=100)  # Adjust width as needed
-        else:
-            st.warning("No cropped images to display. Please go to the 'Object Detection' page and detect objects first.")
+                            # Crop detected areas from the image
+                            cropped_images = crop_detected_areas(image, detections)
+                            st.session_state['detected_objects'] = detections
+                            st.session_state['cropped_images'] = cropped_images
 
-        # Use an expander for enhancement parameters
-        with st.expander("Enhancement Parameters", expanded=False):  # Set expanded=True to expand by default
-            col1, col2 = st.columns(2)
+                            # Display cropped images
+                            st.success("Cropped objects:")
+                            cols = st.columns(len(cropped_images))
+                            for idx, col in enumerate(cols):
+                                with col:
+                                    st.image(cropped_images[idx], caption=f'Cropped Object {idx + 1}', width=100)
+                        else:
+                            st.info("No objects detected.")
 
-            with col1:
-                # Enhancement Parameter Sliders
-                resize_factor = st.slider("Resize Factor", min_value=0.1, max_value=9.0, value=1.0, step=0.1)
-                denoise_strength = st.slider("Denoise Strength", min_value=0, max_value=200, value=10)
-                denoise_template_window_size = st.slider("Denoise Template Window Size", min_value=3, max_value=41, value=7, step=2)
-                denoise_search_window = st.slider("Denoise Search Window", min_value=3, max_value=41, value=21, step=2)
-                thresholding = st.checkbox("Thresholding", value=True)
-                deskew_angle = st.slider("Deskew Angle", min_value=-90, max_value=90, value=0)
+    if tab_option == "Image Enhancement Tool":
+        # Main expander for "Improve Detected Objects Quality"
+        with st.expander("Improve Detected Objects Quality"):
+            if 'cropped_images' in st.session_state and len(st.session_state['cropped_images']) > 0:
+                st.success("Detected objects:")
+                cols = st.columns(len(st.session_state['cropped_images']))
+                for idx, col in enumerate(cols):
+                    with col:
+                        st.image(st.session_state['cropped_images'][idx], caption=f'Detected Object {idx + 1}', width=100)
 
-                # Enhance Cropped Images Button
-                if st.button('Apply Enhancements'):
-                    if 'cropped_images' in st.session_state and st.session_state['cropped_images']:
-                        # Call your enhancement function here
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    resize_factor = st.slider("Resize Factor", min_value=0.1, max_value=9.0, value=1.0, step=0.1, key='resize_factor1')
+                    denoise_strength = st.slider("Denoise Strength", min_value=0, max_value=200, value=10, key='denoise_strength1')
+                    denoise_template_window_size = st.slider("Denoise Template Window Size", min_value=3, max_value=41, value=7, step=2, key='denoise_template_window_size1')
+                    denoise_search_window = st.slider("Denoise Search Window", min_value=3, max_value=41, value=21, step=2, key='denoise_search_window1')
+                    thresholding = st.checkbox("Thresholding", value=True, key='thresholding1')
+                    deskew_angle = st.slider("Deskew Angle", min_value=-90, max_value=90, value=0, key='deskew_angle1')
+
+                    if st.button('Apply Enhancements', key='apply_enhancements1'):
+                        # Assume enhance_images function definition is provided elsewhere
                         enhanced_images = enhance_images(
                             st.session_state['cropped_images'],
                             resize_factor=resize_factor,
@@ -421,20 +609,71 @@ if page == "Object Detection":
                             deskew_angle=deskew_angle
                         )
                         st.session_state['enhanced_images'] = enhanced_images
-                        st.success("Enhancement parameters applied successfully!")
-
-            with col2:
-                # Display the first enhanced image
-                if 'enhanced_images' in st.session_state and st.session_state['enhanced_images']:
-                    st.image(st.session_state['enhanced_images'][0], caption='Enhanced Object 1', use_column_width=False)
-
-
+                        st.success("Enhancement parameters applied successfully.")
+                with col2:
+                    if 'enhanced_images' in st.session_state and len(st.session_state['enhanced_images']) > 0:
+                        st.image(st.session_state['enhanced_images'][0], caption='Enhanced Object 1')
+            else:
+                st.warning("No cropped images to display. Please detect objects first.")
 
 
 
+        if 'images' in st.session_state and len(st.session_state['images']) > 0:
+            with st.expander("Improve P&ID Image Quality"):
+                # Assuming st.session_state['images'] stores PIL images or image file paths
+                # Display the first uploaded image from the session state directly
+                st.image(st.session_state['images'][0], caption='Uploaded Image', use_column_width=True)
 
+                # Assuming the first image from the session state is the one we want to enhance
+                image = st.session_state['images'][0]  # Directly use the stored image
 
+                img_center_x, img_center_y = image.width // 2, image.height // 2
 
+                if 'x_coord' not in st.session_state or 'y_coord' not in st.session_state:
+                    st.session_state['x_coord'] = img_center_x
+                    st.session_state['y_coord'] = img_center_y
+
+                col1, col2 = st.columns([7, 3])
+                with col1:
+                    # No need to display the image again as it's already displayed above
+                    pass  # Placeholder in case you want to add other content here
+
+                with col2:
+                    new_x_coord = st.number_input("X coordinate of interest", min_value=0, max_value=image.width, value=st.session_state['x_coord'], key='x_coord2')
+                    new_y_coord = st.number_input("Y coordinate of interest", min_value=0, max_value=image.height, value=st.session_state['y_coord'], key='y_coord2')
+                    new_region_size = st.number_input("Size of the region to zoom in on", min_value=50, max_value=min(image.width, image.height), value=100, key='new_region_size2')
+
+                    resize_factor = st.slider("Resize Factor", min_value=0.1, max_value=9.0, value=1.0, step=0.1, key='resize_factor2')
+                    denoise_strength = st.slider("Denoise Strength", min_value=0, max_value=200, value=10, key='denoise_strength2')
+                    denoise_template_window_size = st.slider("Denoise Template Window Size", min_value=3, max_value=41, value=7, step=2, key='denoise_template_window_size2')
+                    denoise_search_window = st.slider("Denoise Search Window", min_value=3, max_value=41, value=21, step=2, key='denoise_search_window2')
+                    thresholding = st.checkbox("Thresholding", value=True, key='thresholding2')
+                    deskew_angle = st.slider("Deskew Angle", min_value=-90, max_value=90, value=0, key='deskew_angle2')
+
+                    st.session_state['x_coord'] = new_x_coord
+                    st.session_state['y_coord'] = new_y_coord
+
+                    left = max(0, new_x_coord - new_region_size // 2)
+                    top = max(0, new_y_coord - new_region_size // 2)
+                    right = left + new_region_size
+                    bottom = top + new_region_size
+                    region_of_interest = image.crop((left, top, right, bottom))
+
+                    # Assume enhance_images function definition is provided elsewhere
+                    enhanced_region = enhance_images(
+                        [region_of_interest],
+                        resize_factor,
+                        denoise_strength,
+                        denoise_template_window_size,
+                        denoise_search_window,
+                        thresholding,
+                        deskew_angle
+                    )[0]
+
+                with col1:
+                    st.image(enhanced_region, caption='Zoomed and Enhanced Region', use_column_width=True)
+        else:
+            st.warning("No image uploaded. Please go to the 'Detect Object' tab and upload an image first.")
 
 
 if page == "OCR":
@@ -451,7 +690,7 @@ if page == "OCR":
     if selection == "Regex Generator":
         st.subheader("Regex Pattern Generator")
         company_selection = st.selectbox(
-            "For naming convention: 00-AA-1234; AA-00-1234", 
+            "For naming convention: 00-AA-1234; AA-00-1234",
             ["Naming convention"]
         )
 
@@ -462,96 +701,90 @@ if page == "OCR":
                 num_function_letters_eigen = st.number_input("Function Code letters (2-5):", min_value=2, max_value=5, value=2, step=1, key="eigen_function")
                 num_loop_sequence_digits_eigen = st.number_input("Loop Sequence digits (default 4):", min_value=1, max_value=6, value=4, step=1, key="eigen_sequence")
                 submitted_eigen = st.form_submit_button("Generate Pattern")
-                
+
                 if submitted_eigen:
                     eigen_pattern = fr'\b(\d{{{num_system_digits_eigen}}})?[,.)]?\s*([A-Z]{{{num_function_letters_eigen},5}}\s*\d{{{num_loop_sequence_digits_eigen}}}(?:\s*[A-Z])?)\b'
                     st.write("Generated regex pattern:")
                     st.code(eigen_pattern)
 
 
-    # Assuming the initial setup remains the same
-    
-    if selection == "Extract Text":
-        st.subheader("Extract Text from Detected Objects")
-        default_pattern = r'\b(\d{2})?[,.)]?\s*([A-Z]{2,5})\s*(\d{4})(?:\s*[A-Z])?\b'
-        regex_pattern = st.text_input("Enter the custom regex pattern for instrument numbers:", value=default_pattern)
-        system_number_hint = st.text_input("System Number Hint:", key="system_number_hint")
 
+    if selection == "Extract Text":
+        st.subheader("Extract Text from Cropped Images")
+
+        # Checkbox to choose between seeing all text or filtered by regex
+        use_regex = st.checkbox("Filter text using a custom regex pattern", True)
+
+        if use_regex:
+            default_pattern = r'\b(\d{2})?[,.)]?\s*([A-Z]{2,5})\s*(\d{4})(?:\s*[A-Z])?\b'
+            regex_pattern = st.text_input("Enter the custom regex pattern for instrument numbers:", value=default_pattern)
+        else:
+            regex_pattern = r".*"  # Match anything if regex is not used
+
+        system_number_hint = st.text_input("System Number Hint:", key="system_number_hint")
         system_number_position = st.radio(
             "Select where to place the System Number:",
-            ('Beginning', 'End'), 
-            index=0, 
+            ('Beginning', 'End'),
+            index=0,
             key="system_number_position"
         )
 
         if st.button('Extract Instruments'):
             extracted_data = []
+            all_text_data = []  # List to hold all extracted text for display
+            if 'detected_objects' in st.session_state and 'cropped_images' in st.session_state:
+                for idx, detected_object in enumerate(st.session_state['detected_objects']):
+                    class_name = detected_object['class']  # Extract the class name
+                    image = st.session_state['cropped_images'][idx]  # Accessing the cropped image directly
 
-            # Ensure you've processed and stored cropped images with class names in st.session_state['cropped_images_with_classes'] beforehand
-            for idx, detected_object in enumerate(st.session_state['detected_objects']):
-                class_name = detected_object['class']  # Extract the class name
-                image = st.session_state['cropped_images_with_classes'][idx]  # Accessing the cropped image directly
-                
-                # Here, you would perform OCR on each cropped image
-                text = extract_text_from_image(image)
-                instrument_pattern = re.compile(regex_pattern)
-                matches = instrument_pattern.findall(text)
-
-                for match in matches:
-                    system_number = match[0].strip() if match[0].strip() else system_number_hint
-                    function_code = match[1].strip()
-                    loop_sequence = match[2].strip()
-
-                    if system_number_position == 'Beginning':
-                        tagname = f"{system_number}-{function_code}-{loop_sequence}"
+                    # Perform OCR on each cropped image
+                    text = extract_text_from_image(image)
+                    all_text_data.append(text)  # Add all extracted text to the list
+                    if use_regex:
+                        instrument_pattern = re.compile(regex_pattern)
+                        matches = instrument_pattern.findall(text)
                     else:
-                        tagname = f"{function_code}-{loop_sequence}-{system_number}"
+                        matches = [text]  # Use the entire extracted text if not using regex
 
-                    extracted_data.append({
-                        "Index": len(extracted_data) + 1,
-                        "Original Number": ''.join(match).strip(),
-                        "TAGNAME": tagname,
-                        "SYSTEM": system_number,
-                        "FUNCTION_CODE": function_code,
-                        "LOOP SEQUENCE": loop_sequence,
-                        "DRAWING_NO": st.session_state.get('uploaded_image_name', 'No File Uploaded'),
-                        "CLASS": class_name  # Including the class name
-                    })
+                    for match in matches:
+                        # Your existing processing logic here...
+                        pass
 
-            st.session_state['extracted_data'] = extracted_data
+                st.session_state['extracted_data'] = extracted_data
 
-        # Continue with displaying and editing extracted instrument numbers...
+                if not use_regex:
+                    st.subheader("Extracted Text from Images")
+                    for i, text in enumerate(all_text_data, start=1):
+                        st.text_area(f"Text from Image {i}", value=text, height=100)
+            else:
+                st.warning("No detected objects or cropped images found in the session state.")
+
 
         # Displaying and editing the extracted instrument numbers
         if 'extracted_data' in st.session_state and st.session_state['extracted_data']:
             for data in st.session_state['extracted_data']:
-                # Use .get() to safely access 'TAGNAME' with a default value if not found
                 edited_tagname = st.text_input(
                     f"Edit Tagname {data['Index']}",
                     value=data.get('TAGNAME', 'N/A'),  # Default value 'N/A' if 'TAGNAME' not found
                     key=f"edit_tag_{data['Index']}"
                 )
-                # Here you can update the dictionary with edited_tagname if needed
+                # Update the TAGNAME in extracted_data with edited_tagname if needed
+                data['TAGNAME'] = edited_tagname
 
             if st.button("Confirm Edits"):
-                # Optionally process the confirmed edits here
+                # Process the confirmed edits here if necessary
                 st.success("Instrument numbers and Tagnames updated.")
 
-        # Example adjustment for displaying the table with a "CLASS" column
+        # Displaying the table with extracted data
         if st.button("Show Table"):
             if 'extracted_data' in st.session_state and st.session_state['extracted_data']:
-                # Convert the extracted data to a DataFrame
                 df = pd.DataFrame(st.session_state['extracted_data'])
-
-                # Specify the desired column order, ensuring CLASS follows TAGNAME
                 column_order = ["Index", "Original Number", "TAGNAME", "CLASS", "SYSTEM", "FUNCTION_CODE", "LOOP SEQUENCE", "DRAWING_NO"]
-
-                # Reorder the DataFrame according to the specified column order
-                # Note: This step assumes all the specified columns exist in your DataFrame.
-                # If there are any additional or missing columns, adjust the column_order list accordingly.
-                df = df[column_order]
-
-                # Display the reordered DataFrame
+                df = df[column_order]  # Reorder columns
                 st.dataframe(df)
             else:
                 st.warning("No data available. Please extract and edit instrument numbers and Tagnames first.")
+
+
+
+
