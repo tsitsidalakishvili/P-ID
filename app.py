@@ -57,23 +57,31 @@ temp_images_dir = "temp_images_for_ocr"
 if not os.path.exists(temp_images_dir):
     os.makedirs(temp_images_dir)
 
-# Define the simplified model loading function
+
+# Dynamically get the directory where the script is located
+base_dir = os.path.dirname(__file__)
+
+# Construct the path to the model relative to the script's directory
+model_rel_path = 'weights/best.pt'
+model_path = os.path.join(base_dir, model_rel_path)
+
+# Define the function to load your YOLOv5 model
 def load_model(model_path):
     """
     Loads a YOLOv5 model from the specified path.
     
     Parameters:
-        model_path (str): The path to the YOLOv5 model file.
+        model_path (str): The absolute path to the YOLOv5 model file.
     
     Returns:
         A loaded YOLOv5 model.
     """
-    # Assuming yolov5_dir is defined and points to the directory containing the model
+    # Ensure the yolov5 directory is accessible as expected in the deployment environment
+    yolov5_dir = os.path.join(base_dir, 'yolov5')  # Adjust 'yolov5' as necessary based on your directory structure
     model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
     return model
 
 # Use the function to load your model
-model_path = 'path/to/your/yolov5/model/best.pt'  # Update this path as necessary
 model = load_model(model_path)
 
 
