@@ -57,26 +57,24 @@ temp_images_dir = "temp_images_for_ocr"
 if not os.path.exists(temp_images_dir):
     os.makedirs(temp_images_dir)
 
+# Define the simplified model loading function
+def load_model(model_path):
+    """
+    Loads a YOLOv5 model from the specified path.
+    
+    Parameters:
+        model_path (str): The path to the YOLOv5 model file.
+    
+    Returns:
+        A loaded YOLOv5 model.
+    """
+    # Assuming yolov5_dir is defined and points to the directory containing the model
+    model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
+    return model
 
-base_dir = os.path.dirname(__file__)  # Dynamically get the script directory
-
-# Relative path to your YOLOv5 directory from the base directory
-yolov5_rel_path = 'yolov5'
-
-# Full path to the YOLOv5 directory
-yolov5_dir = os.path.join(base_dir, yolov5_rel_path)
-
-# Relative path to your trained model from the base directory
-model_rel_path = os.path.join('yolov5', 'runs', 'train', 'exp2', 'weights', 'best.pt')
-
-# Full path to the trained model
-model_path = os.path.join(base_dir, model_rel_path)
-
-# Convert model_path to string - This is the necessary change
-model_path_str = str(model_path)  # Convert WindowsPath or PosixPath to string
-
-# Load the trained model with force_reload
-model = torch.hub.load(yolov5_dir, 'custom', path=model_path_str, source='local', force_reload=True)
+# Use the function to load your model
+model_path = 'path/to/your/yolov5/model/best.pt'  # Update this path as necessary
+model = load_model(model_path)
 
 
 
