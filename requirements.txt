@@ -1,5 +1,5 @@
 tensorflow
-opencv-python
+opencv-python-headless  # Use the headless version of OpenCV
 numpy
 scikit-learn
 scikit-image
