@@ -7,11 +7,10 @@ matplotlib
 ipywidgets
 PyMuPDF
 pdfplumber
-torchvision==0.16.1  # Trying a newer version that might be compatible with torch 2.3.0
+torchvision==0.16.1
 craft-text-detector
 pytesseract
 rapidocr_onnxruntime
 streamlit-elements
 pdf2image
-torch==2.3.0
-
+torch==2.1.1
