@@ -14,3 +14,4 @@ rapidocr_onnxruntime
 streamlit-elements
 pdf2image
 torch==2.3.0
+
