@@ -1,0 +1,17 @@
+
+        tensorflow
+        opencv-python
+        numpy
+        scikit-learn
+        scikit-image
+        matplotlib
+        ipywidgets
+        PyMuPDF
+        pdfplumber
+        torchvision==0.13.0
+        craft-text-detector
+        pytesseract
+        rapidocr_onnxruntime
+        streamlit-elements
+        pdf2image
+        torch==2.3.0
