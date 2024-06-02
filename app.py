@@ -365,6 +365,12 @@ if page == "Object Detection":
             else:
                 st.warning("No cropped images to display. Please detect objects first.")
 
+
+
+
+
+
+
 # OCR Page
 if page == "OCR":
     st.write("## OCR (Optical Character Recognition) 📖\nUse OCR to extract text from detected objects in your images. Customize your extraction with naming conventions and regular expressions for precise analysis.")
@@ -401,92 +407,146 @@ if page == "OCR":
     system_number_pattern = r'\b(\d{2})\b'
     function_code_pattern = r'\b([A-Z]{2,5})\b'
     loop_sequence_pattern = r'\b(\d{4})\b'
+    vessel_pattern = r'\bV[A-Z]-\d{2}-\d{3}\b'
+    supply_lines_pattern = r'\b\d{4}-[A-Z]{3}-\d{2}-\d{4}-[A-Z]{2}\d?-\d{2}-[A-Z]\b'
 
-    if 'extracted_texts' in st.session_state:
-        extracted_texts = st.session_state['extracted_texts']
-        with st.expander("Extracted Text from P&ID"):
-            for i, text in enumerate(extracted_texts):
-                st.write(f"**Page {i + 1}:**")
-                st.write(text)
-    else:
-        st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
+    col = st.columns(1)[0]
 
-    if st.button('Extract Instruments'):
-        extracted_data = []
+    with col:
+        if st.button('Extract Instruments'):
+            extracted_data = []
 
-        if 'cropped_images_paths' in st.session_state:
-            for image_path in st.session_state['cropped_images_paths']:
-                text = text_extractor.extract_text(Image.open(image_path))
+            if 'cropped_images_paths' in st.session_state:
+                for image_path in st.session_state['cropped_images_paths']:
+                    text = text_extractor.extract_text(Image.open(image_path))
 
-                # Extract matches for each part
-                system_number_matches = re.findall(system_number_pattern, text)
-                function_code_matches = re.findall(function_code_pattern, text)
-                loop_sequence_matches = re.findall(loop_sequence_pattern, text)
+                    # Extract matches for each part
+                    system_number_matches = re.findall(system_number_pattern, text)
+                    function_code_matches = re.findall(function_code_pattern, text)
+                    loop_sequence_matches = re.findall(loop_sequence_pattern, text)
 
-                file_name_match = re.search(r'(.+?)\.png', os.path.basename(image_path))
-                drawing_no = file_name_match.group(1) if file_name_match else "Unknown"
+                    file_name_match = re.search(r'(.+?)\.png', os.path.basename(image_path))
+                    drawing_no = file_name_match.group(1) if file_name_match else "Unknown"
 
-                # Assuming we have the same number of function codes and loop sequences
-                for function_code, loop_sequence in zip(function_code_matches, loop_sequence_matches):
-                    system_number = system_number_matches[0] if system_number_matches else (
-                        system_hint1 if part1 == "System Number" else (
-                            system_hint2 if part2 == "System Number" else (
-                                system_hint3 if part3 == "System Number" else ""
+                    # Assuming we have the same number of function codes and loop sequences
+                    for function_code, loop_sequence in zip(function_code_matches, loop_sequence_matches):
+                        system_number = system_number_matches[0] if system_number_matches else (
+                            system_hint1 if part1 == "System Number" else (
+                                system_hint2 if part2 == "System Number" else (
+                                    system_hint3 if part3 == "System Number" else ""
+                                )
                             )
                         )
-                    )
 
-                    parts_dict = {
-                        "System Number": system_number,
-                        "Function Code": function_code,
-                        "Loop Sequence": loop_sequence
-                    }
+                        parts_dict = {
+                            "System Number": system_number,
+                            "Function Code": function_code,
+                            "Loop Sequence": loop_sequence
+                        }
 
-                    tagname_parts = []
-                    for i, part in enumerate(selected_parts):
-                        if part != "None":
-                            tagname_parts.append(parts_dict[part])
-                            if i < len(selected_separators):
-                                tagname_parts.append(selected_separators[i])
-                    tagname = ''.join(tagname_parts).rstrip("-")
+                        tagname_parts = []
+                        for i, part in enumerate(selected_parts):
+                            if part != "None":
+                                tagname_parts.append(parts_dict[part])
+                                if i < len(selected_separators):
+                                    tagname_parts.append(selected_separators[i])
+                        tagname = ''.join(tagname_parts).rstrip("-")
 
-                    extracted_data.append({
-                        'Tagname': tagname,
-                        'Class': 'INSTRUMENT',
-                        'System': system_number,
-                        'Function_Code': function_code,
-                        'Loop_Sequence': loop_sequence,
-                        'Drawing_No': drawing_no
-                    })
+                        extracted_data.append({
+                            'Tagname': tagname,
+                            'Class': 'INSTRUMENT',
+                            'System': system_number,
+                            'Function_Code': function_code,
+                            'Loop_Sequence': loop_sequence,
+                            'Drawing_No': drawing_no
+                        })
+                
+                st.divider()
 
-            df = pd.DataFrame(extracted_data)
-            
-            st.divider()
+                df = pd.DataFrame(extracted_data)
+                
+                st.divider()
 
-            with st.container():
-                col1, col2 = st.columns(2)
-                with col2:
-                    st.write("### Uploaded P&ID Diagram")
+                with st.container():
+                    col1, col2 = st.columns(2)
+                    with col2:
+                        st.write("### Uploaded P&ID Diagram")
 
-                    if 'images_with_boxes' in st.session_state and st.session_state['images_with_boxes']:
-                        st.image(st.session_state['images_with_boxes'], caption='Uploaded Image with Detections')
-                with col1:
-                    if not df.empty:
-                        st.write("### Extracted Instruments Data")
-                        st.dataframe(df)
+                        if 'images_with_boxes' in st.session_state and st.session_state['images_with_boxes']:
+                            st.image(st.session_state['images_with_boxes'], caption='Uploaded Image with Detections')
+                    with col1:
+                        if not df.empty:
+                            st.write("### Extracted Instruments Data")
+                            st.dataframe(df)
 
-                        csv_path = 'output_instruments.csv'
-                        df.to_csv(csv_path, sep=';', index=False)
+                            csv_path = 'output_instruments.csv'
+                            df.to_csv(csv_path, sep=';', index=False)
+
+                            st.download_button(
+                                label="Download CSV",
+                                data=df.to_csv(index=False).encode('utf-8'),
+                                file_name='output_instruments.csv',
+                                mime='text/csv'
+                            )
+                        else:
+                            st.warning("No matches found or no images to process.")
+            else:
+                st.warning("No detected objects or cropped images found in the session state.")
+    
+        if 'extracted_texts' in st.session_state:
+            extracted_texts = st.session_state['extracted_texts']
+            with st.expander("Extracted Text from P&ID"):
+                for i, text in enumerate(extracted_texts):
+                    st.write(f"**Page {i + 1}:**")
+                    st.write(text)
+        else:
+            st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
+
+    with col:
+        if st.button('Extract Other Equipment'):
+            extracted_equipments = []
+
+            if 'extracted_texts' in st.session_state:
+                for page_num, text in enumerate(st.session_state['extracted_texts']):
+                    vessel_matches = re.findall(vessel_pattern, text)
+                    supply_lines_matches = re.findall(supply_lines_pattern, text)
+
+                    for vessel_match in vessel_matches:
+                        tagname = vessel_match
+                        extracted_equipments.append({
+                            'Tagname': tagname,
+                            'Class': 'VESSEL',
+                            'Drawing_No': f'Page {page_num + 1}'
+                        })
+
+                    for supply_line in supply_lines_matches:
+                        extracted_equipments.append({
+                            'Tagname': supply_line,
+                            'Class': 'SUPPLY LINE',
+                            'Drawing_No': f'Page {page_num + 1}'
+                        })
+
+                df_equip = pd.DataFrame(extracted_equipments)
+                
+                st.divider()
+
+                with st.container():
+                    if not df_equip.empty:
+                        st.write("### Extracted Equipment Data")
+                        st.dataframe(df_equip)
+
+                        csv_path_equip = 'output_equipments.csv'
+                        df_equip.to_csv(csv_path_equip, sep=';', index=False)
 
                         st.download_button(
                             label="Download CSV",
-                            data=df.to_csv(index=False).encode('utf-8'),
-                            file_name='output_instruments.csv',
+                            data=df_equip.to_csv(index=False).encode('utf-8'),
+                            file_name='output_equipments.csv',
                             mime='text/csv'
                         )
                     else:
-                        st.warning("No matches found or no images to process.")
-        else:
-            st.warning("No detected objects or cropped images found in the session state.")
+                        st.warning("No matches found.")
+            else:
+                st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
 
         st.divider()
