@@ -7,15 +7,12 @@ import re
 import numpy as np
 import cv2
 import pandas as pd
+import fitz
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-import threading
-import datetime
 from streamlit_tensorboard import st_tensorboard
 from rapidocr_onnxruntime import RapidOCR
 
-import os
-import torch
-import streamlit as st
+import io
 import datetime
 
 # Function to detect the environment
@@ -43,7 +40,6 @@ if is_colab():
     # Colab specific setup
     from google.colab import drive
     drive.mount('/content/drive')
-    #%cd /content/drive/MyDrive/P-ID/yolov5
     
     # Define the model directory and YOLOv5 directory in Colab
     model_dir = '/content/drive/MyDrive/P-ID/yolov5/runs'
@@ -51,7 +47,7 @@ if is_colab():
 else:
     # Local (VS Code) specific setup
     base_dir = os.path.dirname(__file__)
-    yolov5_dir = os.path.join(base_dir, 'yolov5')  # Ensure this path is correct
+    yolov5_dir = os.path.join(base_dir, 'yolov5')
     model_dir = os.path.join(yolov5_dir, 'runs', 'train', 'exp2', 'weights')
 
 # List available models in the directory
@@ -60,23 +56,21 @@ available_models = list_available_models(model_dir)
 # Create a dropdown in Streamlit for model selection
 selected_model = st.selectbox("Select a Model", available_models)
 
-if selected_model:
+# Add a button to load the model
+load_model_button = st.button("Load Model")
+
+# Initialize model variable outside the if block
+if 'model' not in st.session_state:
+    st.session_state['model'] = None
+
+if selected_model and load_model_button:
     # Define the path for the selected model
     model_path = os.path.join(model_dir, selected_model)
 
     # Load the YOLOv5 model based on user selection
-    model = load_model(model_path, yolov5_dir)
+    st.session_state['model'] = load_model(model_path, yolov5_dir)
 
     st.success(f"Model '{selected_model}' loaded successfully!")
-
-else:
-    st.warning("No model selected. Please select a model to proceed.")
-
-
-
-
-
-
 
 # Function to extract metrics from TensorBoard logs
 @st.cache_data
@@ -109,16 +103,36 @@ CLASS_COLORS = {
     "Instrument-square-offset": (128, 0, 128),
 }
 
+# Function to render PDF pages to images
+def render_pdf_page_to_png_with_mupdf(uploaded_file, dpi=300):
+    images = []
+    uploaded_file.seek(0)
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        mat = fitz.Matrix(dpi / 72, dpi / 72)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes))
+
+        if img.mode != 'RGBA':
+            img = img.convert('RGBA')
+
+        images.append(img)
+    return images
+
+# Function to run inference and get results
 def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold=0.3, second_nms_threshold=0.7):
-    model.conf = confidence_threshold
-    results = model(img)
+    st.session_state['model'].conf = confidence_threshold
+    results = st.session_state['model'](img)
     detected_objects = []
     boxes, scores = [], []
 
     for i in range(len(results.xyxy[0])):
         bbox = results.xyxy[0][i].cpu().numpy()
         class_id = int(bbox[5])
-        class_name = model.names[class_id]
+        class_name = st.session_state['model'].names[class_id]
         confidence = bbox[4]
 
         xmin, ymin, xmax, ymax = map(int, bbox[:4].tolist())
@@ -140,6 +154,7 @@ def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold
     detected_objects_nms = [detected_objects[i] for i in final_indices]
     return detected_objects_nms
 
+# Function to draw boxes with class colors
 def draw_boxes_with_class_colors(image, detections):
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
@@ -153,6 +168,7 @@ def draw_boxes_with_class_colors(image, detections):
         draw.text((xmin, ymin), text, fill=color, font=font)
     return image
 
+# Function to crop detected areas
 def crop_detected_areas(image, detections, margin=5):
     cropped_images = []
     for det in detections:
@@ -163,6 +179,7 @@ def crop_detected_areas(image, detections, margin=5):
             cropped_images.append(image.crop((xmin, ymin, xmax, ymax)))
     return cropped_images
 
+# Function to enhance images
 def enhance_images(images, resize_factor, denoise_strength, denoise_template_window_size, denoise_search_window, thresholding, deskew_angle):
     enhanced_images = []
     for image in images:
@@ -184,20 +201,22 @@ def enhance_images(images, resize_factor, denoise_strength, denoise_template_win
         enhanced_images.append(Image.fromarray(sharpened_image))
     return enhanced_images
 
+# Class for OCR text extraction
 class RapidOCRTextExtractor:
     def __init__(self, engine):
         self.engine = engine
 
-    def extract_text(self, image_path):
-        img = Image.open(image_path)
-        open_cv_image = pil_to_cv2(img)
+    def extract_text(self, image):
+        open_cv_image = pil_to_cv2(image)
         preprocessed_image = preprocess_for_ocr(open_cv_image)
         result, _ = self.engine(preprocessed_image)
         return ' '.join([res[1] for res in result]) if result else ''
 
+# Function to convert PIL image to CV2
 def pil_to_cv2(pil_image):
     return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
+# Function to preprocess image for OCR
 def preprocess_for_ocr(image, target_size=(300, 300)):
     image = cv2.resize(image, target_size)
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -205,6 +224,15 @@ def preprocess_for_ocr(image, target_size=(300, 300)):
 
 ocr_engine = RapidOCR()
 text_extractor = RapidOCRTextExtractor(ocr_engine)
+
+def extract_text_from_pdf(uploaded_file):
+    uploaded_file.seek(0)
+    doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    text = ""
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        text += page.get_text("text") + "\n"
+    return text
 
 # Session state for extracted text data
 if 'extracted_data' not in st.session_state:
@@ -220,12 +248,10 @@ def generate_regex_pattern(parts):
     selected_patterns = [pattern_map[part] for part in parts]
     return r"\b" + r"\s*".join(selected_patterns) + r"\b"
 
-
-
-
 # Sidebar page selection
 page = st.sidebar.selectbox("Select a page", ("Object Detection", "OCR"))
 
+# Object Detection Page
 if page == "Object Detection":
     st.write("## Object Detection 🔍\nUse the Object Detection feature to automatically identify and label different instruments and components in your P&ID diagrams. Adjust detection settings as needed.")
     tab_option = st.radio("Select Option", ["Detect Object", "Image Enhancement Tool"], horizontal=True)
@@ -244,27 +270,38 @@ if page == "Object Detection":
         uploaded_files = st.file_uploader("Choose images or PDFs...", type=["jpg", "png", "jpeg", "pdf"], accept_multiple_files=True)
         confidence_threshold = st.slider("Select Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.01)
         images = []
+        extracted_texts = []
 
         if uploaded_files:
             for uploaded_file in uploaded_files:
                 if uploaded_file.type == "application/pdf":
                     with st.spinner(f"Processing {uploaded_file.name}..."):
                         images.extend(render_pdf_page_to_png_with_mupdf(uploaded_file, dpi=dpi))
+                        uploaded_file.seek(0)
+                        extracted_texts.append(extract_text_from_pdf(uploaded_file))
                 else:
-                    images.append(Image.open(uploaded_file).convert('RGB'))
+                    image = Image.open(uploaded_file).convert('RGB')
+                    images.append(image)
+                    extracted_texts.append(text_extractor.extract_text(image))
 
-        if images:
+            st.session_state['images'] = images
+            st.session_state['extracted_texts'] = extracted_texts
+
+            # Second pass: Detect objects
             detect_objects = st.button('Detect Objects')
             if detect_objects:
-                for image in images:
-                    detections = run_inference_and_get_results(confidence_threshold, image)
-                    if detections:
-                        image_with_boxes = draw_boxes_with_class_colors(image.copy(), detections)
-                        st.image(image_with_boxes, caption='Detected Objects', use_column_width=True)
-                        st.session_state['detected_objects'] = detections
-                        st.session_state['images_with_boxes'] = image_with_boxes
-                    else:
-                        st.warning("No objects detected.")
+                if st.session_state['model'] is not None:
+                    for image in images:
+                        detections = run_inference_and_get_results(confidence_threshold, image)
+                        if detections:
+                            image_with_boxes = draw_boxes_with_class_colors(image.copy(), detections)
+                            st.image(image_with_boxes, caption='Detected Objects', use_column_width=True)
+                            st.session_state['detected_objects'] = detections
+                            st.session_state['images_with_boxes'] = image_with_boxes
+                        else:
+                            st.warning("No objects detected.")
+                else:
+                    st.warning("Please load a model before detecting objects.")
 
         if 'detected_objects' in st.session_state and st.session_state['detected_objects']:
             margin = st.slider("Select Margin Size for Cropping (pixels)", min_value=0, max_value=50, value=5, step=1, key="crop_margin_slider")
@@ -328,6 +365,7 @@ if page == "Object Detection":
             else:
                 st.warning("No cropped images to display. Please detect objects first.")
 
+# OCR Page
 if page == "OCR":
     st.write("## OCR (Optical Character Recognition) 📖\nUse OCR to extract text from detected objects in your images. Customize your extraction with naming conventions and regular expressions for precise analysis.")
     
@@ -364,15 +402,21 @@ if page == "OCR":
     function_code_pattern = r'\b([A-Z]{2,5})\b'
     loop_sequence_pattern = r'\b(\d{4})\b'
 
-    # Extract Text Section
-    st.subheader("Extract Text from Cropped Images")
+    if 'extracted_texts' in st.session_state:
+        extracted_texts = st.session_state['extracted_texts']
+        with st.expander("Extracted Text from P&ID"):
+            for i, text in enumerate(extracted_texts):
+                st.write(f"**Page {i + 1}:**")
+                st.write(text)
+    else:
+        st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
 
     if st.button('Extract Instruments'):
         extracted_data = []
 
         if 'cropped_images_paths' in st.session_state:
             for image_path in st.session_state['cropped_images_paths']:
-                text = text_extractor.extract_text(image_path)
+                text = text_extractor.extract_text(Image.open(image_path))
 
                 # Extract matches for each part
                 system_number_matches = re.findall(system_number_pattern, text)
@@ -416,26 +460,33 @@ if page == "OCR":
                     })
 
             df = pd.DataFrame(extracted_data)
+            
+            st.divider()
 
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if 'images_with_boxes' in st.session_state and st.session_state['images_with_boxes']:
-                    st.image(st.session_state['images_with_boxes'], caption='Uploaded Image with Detections', use_column_width=True)
-            with col2:
-                if not df.empty:
-                    st.write("### Extracted Instruments Data")
-                    st.dataframe(df)
+            with st.container():
+                col1, col2 = st.columns(2)
+                with col2:
+                    st.write("### Uploaded P&ID Diagram")
 
-                    csv_path = 'output_instruments.csv'
-                    df.to_csv(csv_path, sep=';', index=False)
+                    if 'images_with_boxes' in st.session_state and st.session_state['images_with_boxes']:
+                        st.image(st.session_state['images_with_boxes'], caption='Uploaded Image with Detections')
+                with col1:
+                    if not df.empty:
+                        st.write("### Extracted Instruments Data")
+                        st.dataframe(df)
 
-                    st.download_button(
-                        label="Download CSV",
-                        data=df.to_csv(index=False).encode('utf-8'),
-                        file_name='output_instruments.csv',
-                        mime='text/csv'
-                    )
-                else:
-                    st.warning("No matches found or no images to process.")
+                        csv_path = 'output_instruments.csv'
+                        df.to_csv(csv_path, sep=';', index=False)
+
+                        st.download_button(
+                            label="Download CSV",
+                            data=df.to_csv(index=False).encode('utf-8'),
+                            file_name='output_instruments.csv',
+                            mime='text/csv'
+                        )
+                    else:
+                        st.warning("No matches found or no images to process.")
         else:
             st.warning("No detected objects or cropped images found in the session state.")
+
+        st.divider()
