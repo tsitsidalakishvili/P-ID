@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import glob
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageFont
 import torch
 from torchvision.ops import nms
@@ -23,9 +24,10 @@ def is_colab():
     except ImportError:
         return False
 
-# Function to list available models in the directory
-def list_available_models(model_dir):
-    return [f for f in os.listdir(model_dir) if f.endswith('.pt')]
+# Function to list available models in the directory and its subdirectories
+def list_available_models(base_dir):
+    model_paths = glob.glob(os.path.join(base_dir, '**', '*.pt'), recursive=True)
+    return model_paths
 
 # Function to load YOLOv5 model
 @st.cache_resource
@@ -48,7 +50,7 @@ else:
     # Local (VS Code) specific setup
     base_dir = os.path.dirname(__file__)
     yolov5_dir = os.path.join(base_dir, 'yolov5')
-    model_dir = os.path.join(yolov5_dir, 'runs', 'train', 'exp2', 'weights')
+    model_dir = os.path.join(yolov5_dir, 'runs', 'train')
 
 # List available models in the directory
 available_models = list_available_models(model_dir)
@@ -64,13 +66,10 @@ if 'model' not in st.session_state:
     st.session_state['model'] = None
 
 if selected_model and load_model_button:
-    # Define the path for the selected model
-    model_path = os.path.join(model_dir, selected_model)
-
     # Load the YOLOv5 model based on user selection
-    st.session_state['model'] = load_model(model_path, yolov5_dir)
+    st.session_state['model'] = load_model(selected_model, yolov5_dir)
 
-    st.success(f"Model '{selected_model}' loaded successfully!")
+    st.success(f"Model '{os.path.basename(selected_model)}' loaded successfully!")
 
 # Function to extract metrics from TensorBoard logs
 @st.cache_data
@@ -364,12 +363,6 @@ if page == "Object Detection":
                         st.image(st.session_state['enhanced_images'][0], caption='Enhanced Object 1')
             else:
                 st.warning("No cropped images to display. Please detect objects first.")
-
-
-
-
-
-
 
 # OCR Page
 if page == "OCR":
