@@ -1,8 +1,9 @@
-import streamlit as st
-import os
-import glob
+import pathlib
+from pathlib import Path
+# Replace PosixPath with WindowsPath for compatibility on Windows
+pathlib.PosixPath = pathlib.WindowsPath
+
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageFont
-import torch
 from torchvision.ops import nms
 import re
 import numpy as np
@@ -12,48 +13,49 @@ import fitz
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from streamlit_tensorboard import st_tensorboard
 from rapidocr_onnxruntime import RapidOCR
-
 import io
 import datetime
+import streamlit as st
+import os
+import glob
+import torch
 
-# Function to detect the environment
-def is_colab():
-    try:
-        import google.colab
-        return True
-    except ImportError:
-        return False
+Image.MAX_IMAGE_PIXELS = None
+
+# Ensure the use of GPU if available
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Function to list available models in the directory and its subdirectories
 def list_available_models(base_dir):
     model_paths = glob.glob(os.path.join(base_dir, '**', '*.pt'), recursive=True)
     return model_paths
 
-# Function to load YOLOv5 model
+# Function to load YOLOv5 model using torch.hub.load with proper path handling
 @st.cache_resource
 def load_model(model_path, yolov5_dir):
-    model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local')
+    model_path = str(Path(model_path).resolve())  # Convert model path to absolute string path
+    yolov5_dir = str(Path(yolov5_dir).resolve())  # Convert YOLOv5 dir to absolute string path
+    model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
+    model.to(device)  # Move model to GPU if available
     return model
 
 # Initialize Streamlit app and set page configuration
 st.set_page_config(layout="wide")
 
-if is_colab():
-    # Colab specific setup
-    from google.colab import drive
-    drive.mount('/content/drive')
-    
-    # Define the model directory and YOLOv5 directory in Colab
-    model_dir = '/content/drive/MyDrive/P-ID/yolov5/runs'
-    yolov5_dir = '.'
-else:
-    # Local (VS Code) specific setup
-    base_dir = os.path.dirname(__file__)
-    yolov5_dir = os.path.join(base_dir, 'yolov5')
-    model_dir = os.path.join(yolov5_dir, 'runs', 'train')
+# Local (VS Code) specific setup
+base_dir = os.path.dirname(__file__)
+yolov5_dir = os.path.join(base_dir, 'yolov5')
+model_dir = os.path.join(yolov5_dir, 'runs', 'train')
+
+# Debug: Print directory paths
+print(f"Base directory: {base_dir}")
+print(f"YOLOv5 directory: {yolov5_dir}")
+print(f"Model directory: {model_dir}")
 
 # List available models in the directory
 available_models = list_available_models(model_dir)
+print("Available models:", available_models)
+st.write("Available models:", available_models)  # You can remove this after debugging
 
 # Create a dropdown in Streamlit for model selection
 selected_model = st.selectbox("Select a Model", available_models)
@@ -67,32 +69,12 @@ if 'model' not in st.session_state:
 
 if selected_model and load_model_button:
     # Load the YOLOv5 model based on user selection
-    st.session_state['model'] = load_model(selected_model, yolov5_dir)
-
-    st.success(f"Model '{os.path.basename(selected_model)}' loaded successfully!")
-
-# Function to extract metrics from TensorBoard logs
-@st.cache_data
-def extract_metrics(logdir):
-    event_acc = EventAccumulator(logdir)
-    event_acc.Reload()
-
-    metrics = {}
     try:
-        metrics['accuracy'] = event_acc.Scalars('accuracy')[-1].value
-        metrics['precision'] = event_acc.Scalars('precision')[-1].value
-        metrics['recall'] = event_acc.Scalars('recall')[-1].value
-    except KeyError:
-        st.error("Could not find some metrics in the TensorBoard logs.")
-    return metrics
+        st.session_state['model'] = load_model(selected_model, yolov5_dir)
+        st.success(f"Model '{os.path.basename(selected_model)}' loaded successfully!")
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
 
-# Function to display key metrics
-def display_metrics(metrics):
-    st.write("## Model Performance Metrics")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Accuracy", f"{metrics['accuracy'] * 100:.2f}%" if 'accuracy' in metrics else "N/A")
-    col2.metric("Precision", f"{metrics['precision'] * 100:.2f}%" if 'precision' in metrics else "N/A")
-    col3.metric("Recall", f"{metrics['recall'] * 100:.2f}%" if 'recall' in metrics else "N/A")
 
 # Define class color mapping
 CLASS_COLORS = {
@@ -248,7 +230,36 @@ def generate_regex_pattern(parts):
     return r"\b" + r"\s*".join(selected_patterns) + r"\b"
 
 # Sidebar page selection
-page = st.sidebar.selectbox("Select a page", ("Object Detection", "OCR"))
+page = st.sidebar.selectbox("Select a page", ("Object Detection", "OCR & RegEx", "About Project"))
+
+# About Project Page
+if page == "About Project":
+    st.write("## About Project 📖")
+    st.write("""
+    ### Project Overview
+    This tool is designed to assist with the detection and extraction of instrument and equipment tagnames from Piping and Instrumentation Diagrams (P&IDs).
+    The primary goal is to automate the process of identifying and extracting tagnames, reducing manual effort, and increasing accuracy.
+
+    ### The Goal
+    For a folder full of P&IDs in PDF format, the tool creates a set of CSV files with a list of all the equipment and instruments on each drawing.
+    These CSVs will be used by our Knowledge Graph build scripts.
+
+    ### What We Need – CSV File
+    The output CSV file contains the following columns:
+    - Tagname
+    - Class (the type detected by the AI)
+    - System
+    - Function_Code
+    - Drawing_No
+
+    ### How the Tool Works
+    1. Upload a document or point it to a folder with lots of documents.
+    2. Provide configuration input to tell the algorithm the structure of Equipment and Instrumentation tags.
+    3. For each document, the tool makes two passes:
+        - Straight OCR to find all the text, then use Regex to extract valid Equipment and Instrument tagnames.
+        - Use image recognition to find the shapes of the instruments and then extract the text from these.
+    4. Combine the output from the two passes, remove duplicates, and output the final CSV file.
+    """)
 
 # Object Detection Page
 if page == "Object Detection":
@@ -267,7 +278,7 @@ if page == "Object Detection":
     if tab_option == "Detect Object":
         dpi = st.number_input("Select DPI for PDF Rendering", min_value=100, max_value=600, value=300, step=50)
         uploaded_files = st.file_uploader("Choose images or PDFs...", type=["jpg", "png", "jpeg", "pdf"], accept_multiple_files=True)
-        confidence_threshold = st.slider("Select Confidence Threshold", min_value=0.0, max_value=1.0, value=0.5, step=0.01)
+        confidence_threshold = st.slider("Select Confidence Threshold", min_value=0.0, max_value=1.0, value=0.05, step=0.01)
         images = []
         extracted_texts = []
 
@@ -290,6 +301,7 @@ if page == "Object Detection":
             detect_objects = st.button('Detect Objects')
             if detect_objects:
                 if st.session_state['model'] is not None:
+                    total_detections = 0
                     for image in images:
                         detections = run_inference_and_get_results(confidence_threshold, image)
                         if detections:
@@ -297,8 +309,10 @@ if page == "Object Detection":
                             st.image(image_with_boxes, caption='Detected Objects', use_column_width=True)
                             st.session_state['detected_objects'] = detections
                             st.session_state['images_with_boxes'] = image_with_boxes
+                            total_detections += len(detections)
                         else:
                             st.warning("No objects detected.")
+                    st.write(f"{total_detections} Objects Detected")
                 else:
                     st.warning("Please load a model before detecting objects.")
 
@@ -318,7 +332,7 @@ if page == "Object Detection":
                         cropped_images_paths.append(cropped_image_path)
 
                 st.session_state['cropped_images_paths'] = cropped_images_paths
-                st.write(f"{len(cropped_images_list)} detected objects.")
+                st.write(f"{len(cropped_images_list)} detected objects cropped and saved.")
                 if cropped_images_list:
                     num_to_display = min(len(cropped_images_list), 7)
                     cropped_cols = st.columns(num_to_display)
@@ -335,7 +349,7 @@ if page == "Object Detection":
                     with col:
                         image = Image.open(st.session_state['cropped_images_paths'][idx])
                         st.image(image, caption=f'Detected Object {idx + 1}', width=100)
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     resize_factor = st.slider("Resize Factor", min_value=0.1, max_value=9.0, value=1.0, step=0.1, key='resize_factor1')
@@ -364,48 +378,43 @@ if page == "Object Detection":
             else:
                 st.warning("No cropped images to display. Please detect objects first.")
 
-# OCR Page
-if page == "OCR":
-    st.write("## OCR (Optical Character Recognition) 📖\nUse OCR to extract text from detected objects in your images. Customize your extraction with naming conventions and regular expressions for precise analysis.")
-    
-    # Naming Convention Builder
-    st.subheader("Naming Convention Builder")
-    st.write("Build your naming convention by selecting the order of components and separators.")
-    
-    parts = ["None", "System Number", "Function Code", "Loop Sequence"]
-    separators = ["-", ""]
+# OCR & RegEx Page
+if page == "OCR & RegEx":
+    st.write("## OCR (Optical Character Recognition) & RegEx 📖\nUse OCR to extract text from detected objects in your images. Customize your extraction with naming conventions and regular expressions for precise analysis.")
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        part1 = st.selectbox("First Part", parts, index=2, key="part1")
-        if part1 == "System Number":
-            system_hint1 = st.text_input("Enter System Number Hint:", value='13', key="system_hint1")
-    with col2:
-        sep1 = st.selectbox("Separator After First Part", separators, key="sep1")
-    with col3:
-        part2 = st.selectbox("Second Part", parts, index=2, key="part2")
-        if part2 == "System Number":
-            system_hint2 = st.text_input("Enter System Number Hint:", value='13', key="system_hint2")
-    with col4:
-        sep2 = st.selectbox("Separator After Second Part", separators, key="sep2")
-    with col5:
-        part3 = st.selectbox("Third Part", parts, index=2, key="part3")
-        if part3 == "System Number":
-            system_hint3 = st.text_input("Enter System Number Hint:", value='13', key="system_hint3")
+    with st.expander("Extract Instruments"):
+        st.subheader("Naming Convention Builder")
+        st.write("Build your naming convention by selecting the order of components and separators.")
 
-    selected_parts = [part1, part2, part3]
-    selected_separators = [sep1, sep2]
+        parts = ["None", "System Number", "Function Code", "Loop Sequence"]
+        separators = ["-", ""]
 
-    # Regex patterns for each part
-    system_number_pattern = r'\b(\d{2})\b'
-    function_code_pattern = r'\b([A-Z]{2,5})\b'
-    loop_sequence_pattern = r'\b(\d{4})\b'
-    vessel_pattern = r'\bV[A-Z]-\d{2}-\d{3}\b'
-    supply_lines_pattern = r'\b\d{4}-[A-Z]{3}-\d{2}-\d{4}-[A-Z]{2}\d?-\d{2}-[A-Z]\b'
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            part1 = st.selectbox("First Part", parts, index=2, key="part1")
+            if part1 == "System Number":
+                system_hint1 = st.text_input("Enter System Number Hint:", value='', key="system_hint1")
+        with col2:
+            sep1 = st.selectbox("Separator After First Part", separators, key="sep1")
+        with col3:
+            part2 = st.selectbox("Second Part", parts, index=2, key="part2")
+            if part2 == "System Number":
+                system_hint2 = st.text_input("Enter System Number Hint:", value='13', key="system_hint2")
+        with col4:
+            sep2 = st.selectbox("Separator After Second Part", separators, key="sep2")
+        with col5:
+            part3 = st.selectbox("Third Part", parts, index=2, key="part3")
+            if part3 == "System Number":
+                system_hint3 = st.text_input("Enter System Number Hint:", value='13', key="system_hint3")
 
-    col = st.columns(1)[0]
+        selected_parts = [part1, part2, part3]
+        selected_separators = [sep1, sep2]
 
-    with col:
+        # Regex patterns for each part
+        system_number_pattern = r'\b(\d{2})\b'
+        function_code_pattern = r'\b([A-Z]{2,5})\b'
+        loop_sequence_pattern = r'\b(\d{4})\b'
+
         if st.button('Extract Instruments'):
             extracted_data = []
 
@@ -453,11 +462,11 @@ if page == "OCR":
                             'Loop_Sequence': loop_sequence,
                             'Drawing_No': drawing_no
                         })
-                
+
                 st.divider()
 
                 df = pd.DataFrame(extracted_data)
-                
+
                 st.divider()
 
                 with st.container():
@@ -485,22 +494,16 @@ if page == "OCR":
                             st.warning("No matches found or no images to process.")
             else:
                 st.warning("No detected objects or cropped images found in the session state.")
-    
-        if 'extracted_texts' in st.session_state:
-            extracted_texts = st.session_state['extracted_texts']
-            with st.expander("Extracted Text from P&ID"):
-                for i, text in enumerate(extracted_texts):
-                    st.write(f"**Page {i + 1}:**")
-                    st.write(text)
-        else:
-            st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
 
-    with col:
-        if st.button('Extract Other Equipment'):
+    with st.expander("Extract Other Equipments"):
+        if st.button('Extract'):
             extracted_equipments = []
 
             if 'extracted_texts' in st.session_state:
                 for page_num, text in enumerate(st.session_state['extracted_texts']):
+                    vessel_pattern = r'\bV[A-Z]-\d{2}-\d{3}\b'
+                    supply_lines_pattern = r'\b\d{4}-[A-Z]{3}-\d{2}-\d{4}-[A-Z]{2}\d?-\d{2}-[A-Z]\b'
+
                     vessel_matches = re.findall(vessel_pattern, text)
                     supply_lines_matches = re.findall(supply_lines_pattern, text)
 
@@ -520,7 +523,7 @@ if page == "OCR":
                         })
 
                 df_equip = pd.DataFrame(extracted_equipments)
-                
+
                 st.divider()
 
                 with st.container():
@@ -542,4 +545,62 @@ if page == "OCR":
             else:
                 st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
 
-        st.divider()
+    with st.expander("Complete Extracted Text"):
+        if 'extracted_texts' in st.session_state:
+            extracted_texts = st.session_state['extracted_texts']
+            for i, text in enumerate(extracted_texts):
+                st.write(f"**Page {i + 1}:**")
+                st.write(text)
+        else:
+            st.warning("No text extracted yet. Please upload a file on the Object Detection page.")
+
+    # Combined Results
+    with st.expander("Combined Extracted Instruments and Equipments"):
+        if 'extracted_data' in st.session_state or 'extracted_texts' in st.session_state:
+            combined_data = []
+
+            if 'extracted_data' in st.session_state:
+                combined_data.extend(st.session_state['extracted_data'])
+
+            if 'extracted_texts' in st.session_state:
+                for page_num, text in enumerate(st.session_state['extracted_texts']):
+                    vessel_pattern = r'\bV[A-Z]-\d{2}-\d{3}\b'
+                    supply_lines_pattern = r'\b\d{4}-[A-Z]{3}-\d{2}-\d{4}-[A-Z]{2}\d?-\d{2}-[A-Z]\b'
+
+                    vessel_matches = re.findall(vessel_pattern, text)
+                    supply_lines_matches = re.findall(supply_lines_pattern, text)
+
+                    for vessel_match in vessel_matches:
+                        tagname = vessel_match
+                        combined_data.append({
+                            'Tagname': tagname,
+                            'Class': 'VESSEL',
+                            'Drawing_No': f'Page {page_num + 1}'
+                        })
+
+                    for supply_line in supply_lines_matches:
+                        combined_data.append({
+                            'Tagname': supply_line,
+                            'Class': 'SUPPLY LINE',
+                            'Drawing_No': f'Page {page_num + 1}'
+                        })
+
+            df_combined = pd.DataFrame(combined_data)
+
+            if not df_combined.empty:
+                st.write("### Combined Extracted Data")
+                st.dataframe(df_combined)
+
+                csv_path_combined = 'output_combined.csv'
+                df_combined.to_csv(csv_path_combined, sep=';', index=False)
+
+                st.download_button(
+                    label="Download Combined CSV",
+                    data=df_combined.to_csv(index=False).encode('utf-8'),
+                    file_name='output_combined.csv',
+                    mime='text/csv'
+                )
+            else:
+                st.warning("No combined data found.")
+        else:
+            st.warning("No extracted data found. Please process some files first.")
