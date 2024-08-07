@@ -15,6 +15,5 @@ pytesseract
 rapidocr_onnxruntime
 streamlit-elements
 pdf2image
-setuptools==65.5.0
 wheel==0.38.4
 distutils  
