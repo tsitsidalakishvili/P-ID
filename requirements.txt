@@ -8,12 +8,12 @@ ipywidgets==8.1.3
 PyMuPDF==1.24.9
 streamlit==1.37.1
 pdfplumber==0.11.2
-torch==2.2.0
-torchvision==0.14.0  # Updated version to ensure compatibility
+torch==2.0.1
+torchvision==0.15.2
 craft-text-detector
 pytesseract
 rapidocr_onnxruntime
 streamlit-elements
 pdf2image
+setuptools==65.5.0
 wheel==0.38.4
-distutils  
