@@ -78,6 +78,8 @@ if selected_model and load_model_button:
 
 
 
+
+
 # Define class color mapping
 CLASS_COLORS = {
     "Instrument-square": (255, 0, 0),
