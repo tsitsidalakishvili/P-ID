@@ -1,2 +1,2 @@
-python3-distutils
-python3-setuptools
+freeglut3-dev
+libgtk2.0-dev
