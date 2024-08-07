@@ -8,8 +8,8 @@ ipywidgets==8.1.3
 PyMuPDF==1.24.9
 streamlit==1.37.1
 pdfplumber==0.11.2
-torch==1.13.1  # Changed to a more stable version
-torchvision==0.14.0  # Ensure compatibility with the chosen torch version
+torch==1.13.1
+torchvision==0.14.0
 craft-text-detector
 pytesseract
 rapidocr_onnxruntime
