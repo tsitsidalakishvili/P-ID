@@ -20,6 +20,7 @@ import streamlit as st
 import os
 import glob
 import torch
+import distutils
 
 Image.MAX_IMAGE_PIXELS = None
 
