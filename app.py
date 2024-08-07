@@ -1,5 +1,6 @@
 import pathlib
 from pathlib import Path
+
 # Replace PosixPath with WindowsPath for compatibility on Windows
 pathlib.PosixPath = pathlib.WindowsPath
 
@@ -74,6 +75,7 @@ if selected_model and load_model_button:
         st.success(f"Model '{os.path.basename(selected_model)}' loaded successfully!")
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
+
 
 
 # Define class color mapping
