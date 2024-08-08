@@ -2,7 +2,6 @@ import streamlit as st
 import pathlib
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps, ImageFont
-from torchvision.ops import nms
 import re
 import numpy as np
 import cv2
@@ -97,6 +96,42 @@ def render_pdf_page_to_png_with_mupdf(uploaded_file, dpi=300):
 
         images.append(img)
     return images
+
+
+def non_max_suppression(boxes, scores, threshold):
+    if len(boxes) == 0:
+        return []
+
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+
+    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+    order = scores.argsort()[::-1]
+
+    keep = []
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+
+        xx1 = np.maximum(x1[i], x1[order[1:]])
+        yy1 = np.maximum(y1[i], y1[order[1:]])
+        xx2 = np.minimum(x2[i], x2[order[1:]])
+        yy2 = np.minimum(y2[i], y2[order[1:]])
+
+        w = np.maximum(0, xx2 - xx1 + 1)
+        h = np.maximum(0, yy2 - yy1 + 1)
+        inter = w * h
+
+        overlap = inter / (areas[order[1:]] + areas[i] - inter)
+        order = order[np.where(overlap <= threshold)[0] + 1]
+
+    return keep
+
 
 # Function to run inference and get results
 def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold=0.3, second_nms_threshold=0.7):
