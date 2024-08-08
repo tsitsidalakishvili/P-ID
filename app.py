@@ -22,63 +22,65 @@ import glob
 import torch
 
 Image.MAX_IMAGE_PIXELS = None
+import pathlib
+from pathlib import Path
+import os
+import torch
+import streamlit as st
+from PIL import Image, ImageDraw, ImageOps, ImageFont
+from torchvision.ops import nms
+import numpy as np
+import cv2
+import pandas as pd
+import fitz
+from rapidocr_onnxruntime import RapidOCR
 
-# Ensure the use of GPU if available
+# Adjust PosixPath for Windows compatibility
+pathlib.PosixPath = pathlib.WindowsPath
+
+# Check device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Function to list available models in the directory and its subdirectories
-def list_available_models(base_dir):
-    model_paths = glob.glob(os.path.join(base_dir, '**', '*.pt'), recursive=True)
-    return model_paths
-
-# Function to load YOLOv5 model using torch.hub.load with proper path handling
-@st.cache_resource
-def load_model(model_path, yolov5_dir):
-    model_path = str(Path(model_path).resolve())  # Convert model path to absolute string path
-    yolov5_dir = str(Path(yolov5_dir).resolve())  # Convert YOLOv5 dir to absolute string path
-    model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
-    model.to(device)  # Move model to GPU if available
-    return model
-
-# Initialize Streamlit app and set page configuration
+# Set page configuration
 st.set_page_config(layout="wide")
 
-# Local (VS Code) specific setup
+# Set directories
 base_dir = os.path.dirname(__file__)
 yolov5_dir = os.path.join(base_dir, 'yolov5')
 model_dir = os.path.join(yolov5_dir, 'runs', 'train')
 
-# Debug: Print directory paths
-print(f"Base directory: {base_dir}")
-print(f"YOLOv5 directory: {yolov5_dir}")
-print(f"Model directory: {model_dir}")
+# List available models
+def list_available_models(base_dir):
+    model_paths = glob.glob(os.path.join(base_dir, '**', '*.pt'), recursive=True)
+    return model_paths
 
-# List available models in the directory
+# Load model
+@st.cache_resource
+def load_model(model_path, yolov5_dir):
+    model_path = str(Path(model_path).resolve())
+    yolov5_dir = str(Path(yolov5_dir).resolve())
+    model = torch.hub.load(yolov5_dir, 'custom', path=model_path, source='local', force_reload=True)
+    model.to(device)
+    return model
+
+# Get available models
 available_models = list_available_models(model_dir)
-print("Available models:", available_models)
-st.write("Available models:", available_models)  # You can remove this after debugging
+st.write("Available models:", available_models)
 
-# Create a dropdown in Streamlit for model selection
+# Select model
 selected_model = st.selectbox("Select a Model", available_models)
-
-# Add a button to load the model
 load_model_button = st.button("Load Model")
 
-# Initialize model variable outside the if block
+# Session state for model
 if 'model' not in st.session_state:
     st.session_state['model'] = None
 
 if selected_model and load_model_button:
-    # Load the YOLOv5 model based on user selection
     try:
         st.session_state['model'] = load_model(selected_model, yolov5_dir)
         st.success(f"Model '{os.path.basename(selected_model)}' loaded successfully!")
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
-
-
-
-
 
 # Define class color mapping
 CLASS_COLORS = {
@@ -87,6 +89,12 @@ CLASS_COLORS = {
     "Instrument-offset": (0, 0, 255),
     "Instrument-square-offset": (128, 0, 128),
 }
+
+
+
+
+
+
 
 # Function to render PDF pages to images
 def render_pdf_page_to_png_with_mupdf(uploaded_file, dpi=300):
