@@ -1,2 +1,7 @@
 libgl1
 ffmpeg
+streamlit
+torch
+torchvision
+opencv-python
+pyyaml
