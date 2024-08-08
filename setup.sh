@@ -1,6 +1,9 @@
-# setup.sh
+#!/bin/bash
+
+# Create the Streamlit configuration directory
 mkdir -p ~/.streamlit/
 
+# Create the Streamlit configuration file
 echo "\
 [server]\n\
 headless = true\n\
@@ -10,10 +13,7 @@ enableCORS = false\n\
 " > ~/.streamlit/config.toml
 
 # Install system dependencies
-apt-get update && apt-get install -y python3-distutils
-
-# Install other necessary packages
-apt-get install -y libgl1-mesa-glx
+apt-get update && apt-get install -y python3-distutils libgl1-mesa-glx libgl1-mesa-dri
 
 # Update pip
 pip install --upgrade pip
