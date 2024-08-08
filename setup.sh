@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Update package list and install system dependencies
-apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri python3-venv python3-pip cmake
+apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri python3-venv python3-pip cmake python3-distutils
 
 # Create a virtual environment
 python3 -m venv venv
@@ -9,11 +9,13 @@ python3 -m venv venv
 # Activate the virtual environment
 source venv/bin/activate
 
-# Ensure pip and setuptools are up to date
+# Upgrade pip and setuptools to the latest version
 pip install --upgrade pip setuptools
 
-# Explicitly install distutils
-pip install setuptools==58.0.4
+# Install build dependencies using a pyproject.toml
+echo "[build-system]
+requires = ['setuptools', 'wheel']
+build-backend = 'setuptools.build_meta'" > pyproject.toml
 
 # Install Python packages from requirements.txt
 pip install -r requirements.txt
