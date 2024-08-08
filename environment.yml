@@ -1,0 +1,29 @@
+name: my_env
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - matplotlib>=3.2.2
+  - numpy>=1.18.5
+  - opencv-python
+  - pillow>=7.1.2
+  - pyyaml>=5.3.1
+  - requests>=2.23.0
+  - scipy>=1.4.1
+  - torch>=1.7.0
+  - pymupdf
+  - torchvision>=0.8.1
+  - tqdm>=4.41.0
+  - protobuf<4.21.5
+  - ultralytics
+  - rapidocr-onnxruntime
+  - onnxruntime==1.15.0
+  - pandas>=1.1.4
+  - seaborn>=0.11.0
+  - ipython
+  - psutil
+  - thop
+  - streamlit
+  - wget
+  - ffmpeg-python
