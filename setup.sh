@@ -1,14 +1,22 @@
 #!/bin/bash
 
-# Install system dependencies
-apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri python3-distutils python3-setuptools cmake
+# Update package list and install system dependencies
+apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri python3-venv python3-pip cmake
 
-# Explicitly install distutils and setuptools
-apt-get install -y python3-pip
-apt-get install -y python3-distutils
+# Create a virtual environment
+python3 -m venv venv
 
-# Upgrade setuptools and pip to make sure we have the latest versions
-pip install --upgrade setuptools pip
+# Activate the virtual environment
+source venv/bin/activate
+
+# Ensure pip and setuptools are up to date
+pip install --upgrade pip setuptools
+
+# Explicitly install distutils
+pip install setuptools==58.0.4
+
+# Install Python packages from requirements.txt
+pip install -r requirements.txt
 
 # Create the Streamlit configuration directory
 mkdir -p ~/.streamlit/
