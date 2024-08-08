@@ -11,8 +11,6 @@ dependencies:
   - pyyaml
   - requests
   - scipy
-  - torch
-  - torchvision
   - tqdm
   - protobuf<4.21.5
   - ultralytics
@@ -25,3 +23,7 @@ dependencies:
   - thop
   - streamlit
   - pymupdf
+  - pip
+  - pip:
+    - torch
+    - torchvision
