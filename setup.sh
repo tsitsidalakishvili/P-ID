@@ -1,11 +1,19 @@
 # setup.sh
-#!/bin/bash
+mkdir -p ~/.streamlit/
 
-# Install setuptools and distutils using apt
-apt-get update && apt-get install -y python3-setuptools python3-distutils
+echo "\
+[server]\n\
+headless = true\n\
+port = $PORT\n\
+enableCORS = false\n\
+\n\
+" > ~/.streamlit/config.toml
 
-# Install setuptools and distutils using pip
-pip install setuptools
+# Install system dependencies
+apt-get update && apt-get install -y python3-distutils
 
-# Install Python packages
-pip install -r requirements.txt
+# Install other necessary packages
+apt-get install -y libgl1-mesa-glx
+
+# Update pip
+pip install --upgrade pip
