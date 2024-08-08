@@ -22,9 +22,8 @@ dependencies:
   - pymupdf
   - pip
   - pip:
-    - --upgrade pip
-    - torch==2.3.0
-    - torchvision==0.18.0
-    - ultralytics
+    - torch==2.3.0+cu118
+    - torchvision==0.18.0+cu118
+    - torchaudio
     - rapidocr-onnxruntime
     - onnxruntime==1.15.0
