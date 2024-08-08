@@ -1,5 +1,2 @@
-libgl1-mesa-glx
-libgl1-mesa-dri
-python3-venv
-python3-distutils
-python3-pip
+libgl1
+ffmpeg
