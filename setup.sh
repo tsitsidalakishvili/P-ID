@@ -4,11 +4,11 @@
 apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libgl1-mesa-dri \
-    python3.11-venv \
-    python3.11-distutils
+    python3.10-venv \
+    python3.10-distutils
 
 # Create and activate a virtual environment
-python3.11 -m venv ~/.venv
+python3.10 -m venv ~/.venv
 source ~/.venv/bin/activate
 
 # Upgrade pip and setuptools
