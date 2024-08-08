@@ -1,30 +1,13 @@
 #!/bin/bash
 
-# Update package list and install system dependencies
-apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libgl1-mesa-dri \
-    python3.10-venv \
-    python3.10-distutils
+# Check if Docker is installed
+if ! [ -x "$(command -v docker)" ]; then
+  echo 'Error: Docker is not installed.' >&2
+  exit 1
+fi
 
-# Create and activate a virtual environment
-python3.10 -m venv ~/.venv
-source ~/.venv/bin/activate
+# Build the Docker image
+docker build -t streamlit-app .
 
-# Upgrade pip and setuptools
-pip install --upgrade pip setuptools
-
-# Install the required packages from requirements.txt
-pip install -r requirements.txt
-
-# Create the Streamlit configuration directory
-mkdir -p ~/.streamlit/
-
-# Create the Streamlit configuration file
-echo "\
-[server]\n\
-headless = true\n\
-port = $PORT\n\
-enableCORS = false\n\
-\n\
-" > ~/.streamlit/config.toml
+# Run the Docker container
+docker run -p 8501:8501 streamlit-app
