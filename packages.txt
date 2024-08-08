@@ -1,2 +1,5 @@
 libgl1-mesa-glx
 libgl1-mesa-dri
+python3-distutils
+python3-setuptools
+cmake
