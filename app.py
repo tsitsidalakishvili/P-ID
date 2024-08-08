@@ -8,8 +8,6 @@ import numpy as np
 import cv2
 import pandas as pd
 import fitz
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-from streamlit_tensorboard import st_tensorboard
 from rapidocr_onnxruntime import RapidOCR
 import io
 import datetime
