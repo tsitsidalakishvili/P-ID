@@ -1,10 +1,7 @@
+import streamlit as st
 import pathlib
 from pathlib import Path
-
-# Replace PosixPath with WindowsPath for compatibility on Windows
-pathlib.PosixPath = pathlib.WindowsPath
-
-from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageFont
+from PIL import Image, ImageDraw, ImageOps, ImageFont
 from torchvision.ops import nms
 import re
 import numpy as np
@@ -16,24 +13,11 @@ from streamlit_tensorboard import st_tensorboard
 from rapidocr_onnxruntime import RapidOCR
 import io
 import datetime
-import streamlit as st
-import os
-import glob
 import torch
+import glob
+import os
 
 Image.MAX_IMAGE_PIXELS = None
-import pathlib
-from pathlib import Path
-import os
-import torch
-import streamlit as st
-from PIL import Image, ImageDraw, ImageOps, ImageFont
-from torchvision.ops import nms
-import numpy as np
-import cv2
-import pandas as pd
-import fitz
-from rapidocr_onnxruntime import RapidOCR
 
 # Adjust PosixPath for Windows compatibility
 pathlib.PosixPath = pathlib.WindowsPath
