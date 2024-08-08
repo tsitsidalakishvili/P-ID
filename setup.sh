@@ -1,10 +1,7 @@
 #!/bin/bash
 
 # Install system dependencies
-apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri
-
-# Install Python distutils if not already present
-apt-get install -y python3-setuptools
+apt-get update && apt-get install -y libgl1-mesa-glx libgl1-mesa-dri python3-distutils python3-setuptools cmake
 
 # Upgrade setuptools and pip to make sure we have the latest versions
 pip install --upgrade setuptools pip
