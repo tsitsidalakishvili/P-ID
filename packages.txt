@@ -1,4 +1,5 @@
 libgl1-mesa-glx
 libgl1-mesa-dri
-python3.10-venv
-python3.10-distutils
+python3-venv
+python3-distutils
+python3-pip
