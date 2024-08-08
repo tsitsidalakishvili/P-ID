@@ -15,6 +15,7 @@ import torch
 import glob
 import os
 
+
 Image.MAX_IMAGE_PIXELS = None
 
 # Adjust PosixPath for Windows compatibility
