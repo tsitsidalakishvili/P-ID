@@ -13,12 +13,18 @@ import datetime
 import torch
 import glob
 import os
+import platform
+import torchvision.transforms as transforms
+from torchvision.transforms import functional as F
+from memory_profiler import profile
 
+import torchvision.transforms.functional as TF
 
 Image.MAX_IMAGE_PIXELS = None
 
-# Adjust PosixPath for Windows compatibility
-pathlib.PosixPath = pathlib.WindowsPath
+# Adjust PosixPath for Windows compatibility only if running on Windows
+if platform.system() == "Windows":
+    pathlib.PosixPath = pathlib.WindowsPath
 
 # Check device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -71,6 +77,8 @@ CLASS_COLORS = {
     "Instrument-offset": (0, 0, 255),
     "Instrument-square-offset": (128, 0, 128),
 }
+
+
 
 
 
@@ -133,23 +141,59 @@ def non_max_suppression(boxes, scores, threshold):
     return keep
 
 
-# Function to run inference and get results
+
+
+def resize_and_pad(img, size=640):
+    # Resize keeping the aspect ratio and padding to a square of 'size'
+    img = img.resize((size, size), Image.LANCZOS)
+    delta_w = size - img.width
+    delta_h = size - img.height
+    padding = (delta_w // 2, delta_h // 2, delta_w - (delta_w // 2), delta_h - (delta_h // 2))
+    return ImageOps.expand(img, padding, fill=(128, 128, 128))  # Gray padding
+
+
+
+@profile
 def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold=0.3, second_nms_threshold=0.7):
-    st.session_state['model'].conf = confidence_threshold
-    results = st.session_state['model'](img)
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+
+    # Resize and pad image to the model's expected input size (e.g., 640x640)
+    img = resize_and_pad(img, size=640)
+
+    transform = transforms.ToTensor()
+    img_tensor = transform(img).unsqueeze(0).to(device)
+
+    # Perform inference
+    results = st.session_state['model'](img_tensor)
+
     detected_objects = []
     boxes, scores = [], []
 
-    for i in range(len(results.xyxy[0])):
-        bbox = results.xyxy[0][i].cpu().numpy()
-        class_id = int(bbox[5])
-        class_name = st.session_state['model'].names[class_id]
-        confidence = bbox[4]
+    # Inspecting the structure of detections
+    detections = results[0]  # Assuming results is a list of tensors or arrays
 
-        xmin, ymin, xmax, ymax = map(int, bbox[:4].tolist())
-        boxes.append([xmin, ymin, xmax, ymax])
-        scores.append(confidence.item())
-        detected_objects.append({"class": class_name, "confidence": confidence.item(), "bbox": [xmin, ymin, xmax, ymax]})
+    for detection in detections:
+        # Convert detection to list and handle multiple nested elements
+        if isinstance(detection, torch.Tensor):
+            detection = detection.tolist()
+
+        # Ensure detection contains the correct number of elements and isn't nested further
+        if len(detection) >= 6 and all(isinstance(x, (int, float)) for x in detection[:6]):
+            xmin, ymin, xmax, ymax = map(float, detection[:4])
+            confidence = float(detection[4])
+            class_id = int(detection[5])
+
+            # Filter detections by confidence threshold
+            if confidence >= confidence_threshold:
+                class_name = st.session_state['model'].names[class_id]
+                boxes.append([xmin, ymin, xmax, ymax])
+                scores.append(confidence)
+                detected_objects.append({
+                    "class": class_name, 
+                    "confidence": confidence, 
+                    "bbox": [int(xmin), int(ymin), int(xmax), int(ymax)]
+                })
 
     if not boxes:
         return []
@@ -157,13 +201,25 @@ def run_inference_and_get_results(confidence_threshold, img, first_nms_threshold
     boxes_tensor = torch.tensor(boxes, dtype=torch.float32)
     scores_tensor = torch.tensor(scores, dtype=torch.float32)
 
-    keep_indices_first = nms(boxes_tensor, scores_tensor, first_nms_threshold)
+    keep_indices_first = non_max_suppression(boxes_tensor, scores_tensor, first_nms_threshold)
     if not len(keep_indices_first):
         return []
 
-    final_indices = keep_indices_first if second_nms_threshold >= first_nms_threshold else keep_indices_first[nms(boxes_tensor[keep_indices_first], scores_tensor[keep_indices_first], second_nms_threshold)]
+    final_indices = keep_indices_first if second_nms_threshold >= first_nms_threshold else keep_indices_first[
+        non_max_suppression(boxes_tensor[keep_indices_first], scores_tensor[keep_indices_first], second_nms_threshold)
+    ]
     detected_objects_nms = [detected_objects[i] for i in final_indices]
     return detected_objects_nms
+
+
+
+
+
+
+
+
+
+
 
 # Function to draw boxes with class colors
 def draw_boxes_with_class_colors(image, detections):
