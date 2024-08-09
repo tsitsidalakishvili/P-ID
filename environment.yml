@@ -19,7 +19,7 @@ dependencies:
   - thop
   - streamlit
   - pymupdf
-  - opencv-python
+  - opencv-python-headless==4.10.0.84
   - pip
   - pip:
     - torch==2.3.0
