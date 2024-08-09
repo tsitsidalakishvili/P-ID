@@ -17,6 +17,7 @@ import platform
 import torchvision.transforms as transforms
 from torchvision.transforms import functional as F
 from memory_profiler import profile
+st.write("OpenCV version:", cv2.__version__)  # Test if OpenCV is installed and available
 
 import torchvision.transforms.functional as TF
 
